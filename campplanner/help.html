@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camp Planner Help · Grafton Scout Group</title>
+  <meta name="description" content="How to use the Grafton Scout Group Camp Planner: trips, maps, route cards, travel, meals, gear, risks, weather, budget and printing.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛺</text></svg>">
+  <link rel="stylesheet" href="css/styles.css?v=20261114i">
+</head>
+<body class="help-page">
+  <header class="app-header">
+    <a class="brand" href="../index.html" title="Grafton Scout Group home"><img src="img/logo-header.png" alt="Grafton Scout Group" width="37" height="52"><span>Camp Planner — Help</span></a>
+    <div class="trip-title"></div>
+    <a class="btn light no-print" href="./">⛺ Open the Camp Planner</a>
+    <button class="btn light no-print" id="helpPrint">🖨 Print guide</button>
+  </header>
+
+  <main class="help-main" id="helpRoot">
+    <h1 class="help-print-title">Grafton Scout Group Camp Planner — How-to guide</h1>
+    <div class="help-search-bar no-print">
+      <input type="search" data-help-search placeholder="Search the guide — e.g. print, grid reference, car shuffle, sign in" aria-label="Search the guide">
+      <small class="muted" data-help-count></small>
+    </div>
+    <div class="help-guide" id="helpGuide"></div>
+  </main>
+
+  <script src="js/help.js?v=20261114i"></script>
+  <script>
+    (function () {
+      var root = document.getElementById('helpRoot');
+      document.getElementById('helpGuide').innerHTML = Help.guideHtml();
+      var api = Help.wire(root, {
+        scroller: document.scrollingElement,
+        onJump: function (id) { try { history.replaceState(null, '', '#' + id); } catch (e) { /* ignore */ } }
+      });
+      function fromHash() { var id = decodeURIComponent(location.hash.slice(1)); if (id) api.jump(id, { flash: true }); }
+      window.addEventListener('hashchange', fromHash);
+      fromHash();
+      document.getElementById('helpPrint').addEventListener('click', function () {
+        var s = root.querySelector('[data-help-search]');
+        if (s.value) { s.value = ''; api.search(''); }
+        window.print();
+      });
+    })();
+  </script>
+</body>
+</html>

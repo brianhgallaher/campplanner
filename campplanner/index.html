@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camp Planner · Grafton Scout Group</title>
+  <meta name="description" content="Grafton Scout Group camps and hikes: published trip plans with maps, route cards, meals, gear, risks and printable reports.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛺</text></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css?v=20261114i">
+  <script>
+    /* Old trip links (campplanner/?trip=…, ?t=…) now open in the planner itself */
+    (function () { var q = location.search; if (/[?&](trip|t|new)=/.test(q)) location.replace('app.html' + q + location.hash); })();
+  </script>
+</head>
+<body class="landing">
+  <header class="app-header">
+    <a class="brand" href="../index.html" title="Grafton Scout Group home"><img src="img/logo-header.png" alt="Grafton Scout Group" width="37" height="52"><span>Camp Planner</span></a>
+    <div class="trip-title"></div>
+    <a id="lpUsers" class="btn light" href="users.html" title="Manage who can plan, review and administer trips" hidden>👥 Users</a>
+    <a class="btn light" href="go.html" title="The phone app for people on a camp: plan, map and emergency details offline">📱 Phone app</a>
+    <a class="btn light" href="help.html#lp-home" target="_blank" rel="noopener">❓ Help</a>
+    <button id="lpAccount" class="btn light">🔑 Leader sign in</button>
+  </header>
+
+  <main class="lp-main">
+    <section class="lp-hero">
+      <div>
+        <h1>Camps &amp; hikes</h1>
+        <p>Trip plans from Grafton Scout Group leaders — maps and route cards, meals, gear, risk assessments, weather and printable reports. Hover over a pin to see a trip; click to open it.</p>
+        <div class="btn-row">
+          <a class="btn primary lp-plan" href="app.html?new=1" hidden>＋ Plan a new trip</a>
+          <a class="btn lp-plan" href="app.html#trips" hidden>🗂️ Open the planner</a>
+        </div>
+        <p class="small muted" id="lpWho"></p>
+      </div>
+    </section>
+
+    <section class="lp-map-wrap">
+      <div class="lp-mapbar">
+        <label for="lpZoom">🔍 Zoom to</label>
+        <select id="lpZoom" title="Zoom the map to Australia, a state or territory, or all the trips"></select>
+      </div>
+      <div id="lpMap" aria-label="Map of trips"></div>
+      <div class="lp-legend" id="lpLegend"></div>
+    </section>
+
+    <section id="lpReview" class="lp-section" hidden></section>
+    <section id="lpMine" class="lp-section" hidden></section>
+    <section id="lpPublished" class="lp-section"></section>
+    <section id="lpAll" class="lp-section" hidden></section>
+  </main>
+
+  <dialog id="signinDialog" class="signin-dialog">
+    <form class="signin-form" id="siForm" method="dialog">
+      <h3>🔑 Leader sign in</h3>
+      <p class="muted small">Use the same username and password as the leaders' program editor.</p>
+      <label class="field"><span>Username</span><input id="siUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label class="field"><span>Password</span><input id="siPass" type="password" autocomplete="current-password" required></label>
+      <p class="bad-text small" id="siError"></p>
+      <div class="dlg-actions"><button type="button" class="btn" id="siCancel">Cancel</button><button class="btn primary" id="siGo">Sign in</button></div>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/landing.js?v=20261114i"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Only the public endpoints in this folder may be requested directly.
+Options -Indexes
+
+<FilesMatch "^(config\.php|config\.sample\.php|schema\.sql)$">
+    Require all denied
+</FilesMatch>
+
+RedirectMatch 404 ^/api/(lib|tools)(/.*)?$

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camp Planner · Grafton Scout Group</title>
+  <meta name="description" content="Grafton Scout Group camp and hike plans: maps, route cards, meals, gear, risks and printable trip reports.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛺</text></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css?v=20261114j">
+  <style id="pageStyle"></style>
+</head>
+<body>
+  <header class="app-header no-print">
+    <a class="brand" href="./" title="Camp Planner home — all trips and the trip map"><img src="img/logo-header.png" alt="Grafton Scout Group" width="37" height="52"><span>Camp Planner</span></a>
+    <select id="tripSwitch" class="trip-switch no-print" title="Switch trip"></select>
+    <div class="trip-title" id="headerTrip"></div>
+    <span id="saveState" class="save-state"></span>
+    <a id="btnUsers" class="btn light" href="users.html" title="Manage who can plan, review and administer trips" hidden>👥 Users</a>
+    <button id="btnHelp" class="btn light" title="Help and how-to guide (F1)">❓ Help</button>
+    <button id="btnAccount" class="btn light"></button>
+    <button id="btnPrint" class="btn light">🖨 Print this page</button>
+  </header>
+
+  <nav class="tabs no-print" id="tabs">
+    <button data-tab="trips">🗂️ Trips</button>
+    <button data-tab="trip" class="active">🧭 Trip</button>
+    <button data-tab="map">🗺️ Map</button>
+    <button data-tab="traverse">🥾 Traverse</button>
+    <button data-tab="travel">🚗 Travel</button>
+    <button data-tab="meals">🍳 Meals</button>
+    <button data-tab="gear">🎒 Gear</button>
+    <button data-tab="weight">⚖️ Pack Weight</button>
+    <button data-tab="risk">⚠️ Risks</button>
+    <button data-tab="weather">🌦️ Weather &amp; Tides</button>
+    <button data-tab="budget">💰 Budget</button>
+    <button data-tab="report">📄 Report</button>
+  </nav>
+  <div id="accessBar" class="access-bar no-print" hidden></div>
+
+  <main>
+    <section id="tab-trips" class="tab"></section>
+    <section id="tab-trip" class="tab active"></section>
+
+    <section id="tab-map" class="tab">
+      <div class="map-layout">
+        <aside class="map-side no-print">
+          <div class="panel">
+            <div class="row">
+              <input id="mapSearch" placeholder="Search a place, park or campground…">
+              <button class="btn" id="mapSearchGo">Go</button>
+            </div>
+            <div id="mapSearchResults" class="results"></div>
+          </div>
+          <div class="panel dp-panel" id="dayPlanPanel" hidden></div>
+          <div class="panel" id="livePanel" hidden></div>
+          <div class="panel">
+            <h3>Tools</h3>
+            <div class="tool-buttons" id="mapTools">
+              <button data-mode="pan" class="active" title="Pan and select">✋ Select</button>
+              <button data-mode="landmark" title="Click the map to drop a landmark">📍 Landmark</button>
+              <button data-mode="trail" title="Click points along the trail">〰️ Trail</button>
+              <button data-mode="area" title="Click points around an area">⬠ Area</button>
+              <button data-mode="camp" title="Click to set the camp location">⛺ Camp</button>
+            </div>
+            <div id="modeOptions"></div>
+            <div id="draftBar"></div>
+            <p id="drawHint" class="hint"></p>
+            <label class="field"><span>Follow tracks using</span><select id="routeSource"></select></label>
+            <p class="hint">Trails follow the tracks. For a straight (off-track) leg: Shift-click, press <b>S</b> while drawing, or choose 📏 Straight line for a leg under Route between places.</p>
+          </div>
+          <div class="panel">
+            <h3>Route between places</h3>
+            <div id="routePanel"></div>
+          </div>
+          <div class="panel" id="dataPanel">
+            <h3>Parks &amp; track data</h3>
+            <label class="check"><input type="checkbox" id="data-parks"><span>National parks &amp; reserves <small class="muted">(CAPAD, all Australia)</small></span></label>
+            <small class="data-status" id="dataStatus-parks"></small>
+            <label class="check"><input type="checkbox" id="data-tracks"><span>Official walking tracks &amp; fire trails <small class="muted">(NSW Spatial Services)</small></span></label>
+            <small class="data-status" id="dataStatus-tracks"></small>
+            <div class="track-key"><span><i class="k-walk"></i>Walking track</span><span><i class="k-fire"></i>Vehicle / fire trail</span></div>
+            <label class="check"><input type="checkbox" id="data-pois"><span>Campgrounds, huts, lookouts &amp; water <small class="muted">(NSW + OpenStreetMap)</small></span></label>
+            <small class="data-status" id="dataStatus-pois"></small>
+            <p class="hint">Click a campground or hut on the map to add it to your plan.</p>
+          </div>
+          <div class="panel">
+            <h3>Base map</h3>
+            <select id="baseSelect"></select>
+            <label class="check"><input type="checkbox" id="optHill"> Hillshade (terrain relief)</label>
+            <label class="check"><input type="checkbox" id="optLabels"> Show labels</label>
+            <label class="field"><span>Grid</span>
+              <select id="optGrid"><option value="mga">MGA grid (km squares, like topo maps)</option><option value="latlon">Latitude / longitude</option><option value="none">None</option></select></label>
+          </div>
+          <div class="panel">
+            <h3>Show on map</h3>
+            <div id="showPanel"></div>
+          </div>
+          <div class="panel">
+            <h3>Features</h3>
+            <div id="featureList"></div>
+          </div>
+          <div class="panel">
+            <h3>GPS files &amp; Avenza Maps</h3>
+            <div class="btn-row">
+              <button class="btn small" id="kmlExport" title="A KML layer of the landmarks, trails and areas, to import into Avenza Maps">⬇ Export for Avenza (KML)</button>
+              <button class="btn small" id="gpxExport">⬇ Export GPX</button>
+              <label class="btn small edit-only" title="Bring in placemarks, tracks and areas from Avenza Maps or a GPS">⬆ Import KML / KMZ / GPX / CSV<input type="file" id="gpxImport" accept=".gpx,.kml,.kmz,.csv" hidden></label>
+            </div>
+            <p class="hint">Avenza: <b>Map Features → Import</b> to load the KML; <b>Export</b> a layer as KML, KMZ, GPX or CSV to bring it back. Things already on the map are skipped.</p>
+          </div>
+          <button class="btn primary block" id="printPreview">🖨 Print map…</button>
+        </aside>
+
+        <div class="map-wrap">
+          <div id="printBar" class="print-bar no-print" hidden>
+            <strong>Print preview</strong>
+            <span class="muted">Pan and zoom to frame the area, then print.</span>
+            <label>Title <input id="printTitleIn"></label>
+            <label>Paper <select id="printOrient"><option value="landscape">A4 landscape</option><option value="portrait">A4 portrait</option></select></label>
+            <label class="check"><input type="checkbox" id="printLegendOpt" checked> Legend page</label>
+            <button class="btn primary" id="printNow">🖨 Print</button>
+            <button class="btn" id="printClose">Close</button>
+          </div>
+          <div class="map-daybar no-print" id="dayBar" hidden>
+            <label for="dayZoom">📅 Zoom to day</label>
+            <select id="dayZoom" title="Zoom the map to one day of the walk"></select>
+          </div>
+          <div id="printSheet" class="print-sheet">
+            <div class="print-head">
+              <div>
+                <h2 id="printTitle"></h2>
+                <div id="printSub" class="muted"></div>
+              </div>
+              <div id="printBounds" class="print-bounds"></div>
+            </div>
+            <div id="map"></div>
+            <div id="printLegend" class="print-legend"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-traverse" class="tab"></section>
+    <section id="tab-travel" class="tab"></section>
+    <section id="tab-budget" class="tab"></section>
+    <section id="tab-meals" class="tab"></section>
+    <section id="tab-gear" class="tab"></section>
+    <section id="tab-weight" class="tab"></section>
+    <section id="tab-risk" class="tab"></section>
+    <section id="tab-weather" class="tab"></section>
+    <section id="tab-report" class="tab"></section>
+  </main>
+
+  <dialog id="dialog"></dialog>
+  <dialog id="lockDialog" class="signin-dialog">
+    <form class="signin-form" id="lockForm" method="dialog">
+      <h3>🔒 This trip is locked</h3>
+      <p class="muted small">Enter the lock code the trip's leaders gave you.</p>
+      <label class="field"><span>Lock code</span><input id="lockCode" type="password" autocomplete="off" required></label>
+      <p class="bad-text small" id="lockError"></p>
+      <div class="dlg-actions"><a class="btn" href="./">Cancel</a><button class="btn primary" id="lockGo">Open trip</button></div>
+    </form>
+  </dialog>
+  <dialog id="signinDialog" class="signin-dialog">
+    <form id="siForm" class="signin-form">
+      <h3>🔑 Leader sign in</h3>
+      <p class="muted small">Use your leader username and password (the same as the program editor). Anyone can view and print trips without signing in.</p>
+      <label class="field"><span>Username</span><input id="siUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label class="field"><span>Password</span><input id="siPass" type="password" autocomplete="current-password" required></label>
+      <p id="siError" class="bad-text small" role="alert"></p>
+      <div class="btn-row">
+        <button class="btn primary" id="siGo" type="submit">Sign in</button>
+        <button class="btn" id="siCancel" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+  <datalist id="gearNames"></datalist>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/data.js?v=20261114j"></script>
+  <script src="js/store.js?v=20261114j"></script>
+  <script src="js/account.js?v=20261114j"></script>
+  <script src="js/help.js?v=20261114j"></script>
+  <script src="js/larapinta.js?v=20261114j"></script>
+  <script src="js/examples.js?v=20261114j"></script>
+  <script src="js/trips.js?v=20261114j"></script>
+  <script src="js/geo.js?v=20261114j"></script>
+  <script src="js/routing.js?v=20261114j"></script>
+  <script src="js/parks.js?v=20261114j"></script>
+  <script src="js/publish.js?v=20261114j"></script>
+  <script src="js/trip.js?v=20261114j"></script>
+  <script src="js/map.js?v=20261114j"></script>
+  <script src="js/egress.js?v=20261114j"></script>
+  <script src="js/drops.js?v=20261114j"></script>
+  <script src="js/traverse.js?v=20261114j"></script>
+  <script src="js/dayplan.js?v=20261114j"></script>
+  <script src="js/meals.js?v=20261114j"></script>
+  <script src="js/gear.js?v=20261114j"></script>
+  <script src="js/catalog.js?v=20261114j"></script>
+  <script src="js/recipebook.js?v=20261114j"></script>
+  <script src="js/weight.js?v=20261114j"></script>
+  <script src="js/risk.js?v=20261114j"></script>
+  <script src="js/weather.js?v=20261114j"></script>
+  <script src="js/travel.js?v=20261114j"></script>
+  <script src="js/budget.js?v=20261114j"></script>
+  <script src="js/report.js?v=20261114j"></script>
+  <script src="js/live.js?v=20261114j"></script>
+  <script src="js/app.js?v=20261114j"></script>
+</body>
+</html>

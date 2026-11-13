@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camp Planner Users · Grafton Scout Group</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛺</text></svg>">
+  <link rel="stylesheet" href="css/styles.css?v=20261114i">
+</head>
+<body class="landing users-page">
+  <header class="app-header">
+    <a class="brand" href="./" title="Camp Planner home"><img src="img/logo-header.png" alt="Grafton Scout Group" width="37" height="52"><span>Camp Planner — Users</span></a>
+    <div class="trip-title"></div>
+    <a class="btn light" href="./">🏕️ All trips</a>
+    <a class="btn light" href="help.html#users" target="_blank" rel="noopener">❓ Help</a>
+  </header>
+
+  <main class="lp-main" id="usersRoot">
+    <p class="muted">Loading…</p>
+  </main>
+
+  <dialog id="tempDialog" class="signin-dialog">
+    <div class="signin-form">
+      <h3>🔑 Temporary password</h3>
+      <p id="tempText"></p>
+      <p class="temp-pass" id="tempPass"></p>
+      <p class="muted small">Give it to them privately (not in a group chat). They sign in on the <a href="../leaders/program.html">Leaders page</a> and choose their own password — the temporary one is then erased and can't be shown again.</p>
+      <label class="field"><span>Message to send them</span><textarea id="tempMsg" rows="8" readonly></textarea></label>
+      <div class="dlg-actions"><button class="btn" id="tempCopy">📋 Copy message</button><button class="btn primary" id="tempClose">Done</button></div>
+    </div>
+  </dialog>
+
+  <script src="js/users.js?v=20261114i"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Camp Planner: browsers must check for updated pages, scripts and styles every time
+# (a quick "not modified" reply when nothing has changed), so a mix of old and new files never loads.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(html|js|css)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+
+# Phone app manifest
+AddType application/manifest+json .webmanifest

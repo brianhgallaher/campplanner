@@ -1,0 +1,15 @@
+{
+  "name": "Camp Planner Go — Grafton Scout Group",
+  "short_name": "Camp Go",
+  "description": "Your camp's plan, map and emergency details on your phone, even without service.",
+  "start_url": "go.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#262661",
+  "icons": [
+    { "src": "img/go-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "img/go-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,79 @@
+/* Camp Planner Go — phone app */
+:root { --navy: #262661; --blue: #3d5c92; --bg: #f1f5f9; --ink: #1d2340; --muted: #5f6b7a; --line: #d6e0ea; --yellow: #ffc82e; --bad: #c92a2a; --ok: #00664a; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
+.go-head { background: var(--navy); color: #fff; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; display: flex; align-items: center; gap: 10px; border-bottom: 3px solid var(--yellow); }
+.go-head b { flex: 1; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.go-net { font-size: 12px; opacity: .9; white-space: nowrap; }
+main { flex: 1; overflow: auto; padding: 12px; -webkit-overflow-scrolling: touch; position: relative; }
+.go-nav { display: flex; background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+.go-nav button { flex: 1; border: 0; background: none; padding: 8px 2px 7px; font: inherit; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.go-nav button span { font-size: 21px; line-height: 1.1; }
+.go-nav button.on { color: var(--navy); font-weight: 700; box-shadow: inset 0 3px 0 var(--yellow); }
+.go-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+.go-card h1 { font-size: 22px; margin: 0 0 6px; color: var(--navy); }
+.go-card h2 { font-size: 17px; margin: 0 0 8px; color: var(--navy); }
+.go-card p { margin: 6px 0; }
+.small, small { font-size: 13px; color: var(--muted); }
+.muted { color: var(--muted); }
+label { display: block; font-size: 14px; font-weight: 600; margin: 10px 0; }
+input:not([type=checkbox]) { display: block; width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border: 1px solid #b8c4d2; border-radius: 10px; margin-top: 4px; }
+#jCode { text-transform: uppercase; letter-spacing: 3px; font-weight: 700; text-align: center; }
+.go-btn { display: inline-block; font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px; border: 1px solid #b8c4d2; background: #fff; color: var(--ink); text-decoration: none; text-align: center; }
+.go-btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); width: 100%; }
+.go-btn.danger { background: var(--bad); color: #fff; border-color: var(--bad); width: 100%; font-size: 22px; padding: 16px; }
+.go-btn.small { padding: 7px 11px; font-size: 14px; }
+.go-link { border: 0; background: none; font: inherit; color: var(--blue); text-decoration: underline; padding: 0; }
+.go-err { color: var(--bad); min-height: 1em; }
+.go-day { background: #fff; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; padding: 0 14px; }
+.go-day summary { padding: 12px 0; display: flex; gap: 8px; align-items: baseline; cursor: pointer; list-style: none; }
+.go-day summary::-webkit-details-marker { display: none; }
+.go-day summary b { color: var(--navy); }
+.go-day summary span { color: var(--muted); font-size: 14px; flex: 1; }
+.go-day summary em { font-style: normal; font-size: 14px; font-weight: 600; }
+.go-day[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.go-day p { margin: 8px 0; }
+.go-legs { width: 100%; border-collapse: collapse; }
+.go-legs td { padding: 7px 0; border-bottom: 1px solid #edf1f5; }
+.go-tick { display: flex; gap: 8px; align-items: center; font-weight: 400; margin: 6px 0; }
+.go-tick input { width: 20px; height: 20px; flex: none; }
+.go-foot { text-align: center; }
+#goMap { position: absolute; inset: 0 0 46px 0; }
+.go-mapbar { position: absolute; left: 0; right: 0; bottom: 0; height: 46px; display: flex; gap: 6px; align-items: center; padding: 0 8px; background: #fff; border-top: 1px solid var(--line); overflow-x: auto; white-space: nowrap; }
+.go-mark { background: none; border: 0; }
+.go-mark span { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.4); font-size: 15px; }
+.go-gr { font-size: 26px; color: var(--navy); letter-spacing: 1px; }
+.go-dl dt { font-size: 13px; color: var(--muted); margin-top: 10px; }
+.go-dl dd { margin: 2px 0 0; font-weight: 600; white-space: pre-wrap; }
+.go-switch { display: flex; align-items: center; gap: 12px; font-size: 16px; }
+.go-switch input { position: absolute; opacity: 0; }
+.go-switch span { width: 56px; height: 32px; border-radius: 99px; background: #adb5bd; position: relative; flex: none; transition: background .15s; }
+.go-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: left .15s; }
+.go-switch input:checked + span { background: var(--ok); }
+.go-switch input:checked + span::after { left: 27px; }
+.go-toast { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); background: var(--navy); color: #fff; padding: 12px 14px; border-radius: 10px; z-index: 2000; box-shadow: 0 6px 18px rgba(0,0,0,.3); text-align: center; }
+.go-status { display: grid; gap: 8px; margin: 6px 0 10px; }
+.go-status button { display: flex; align-items: center; gap: 10px; font: inherit; font-weight: 600; text-align: left; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: #fff; color: var(--ink); }
+.go-status button span { font-size: 22px; }
+.go-status button.on { border-color: var(--navy); background: #e3f3fb; }
+/* drag down to call 000 */
+.go-sos-ov { position: fixed; inset: 0; z-index: 3000; background: #7a0c0c; color: #fff; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); touch-action: none; user-select: none; -webkit-user-select: none; }
+.go-sos-ov p { margin: 0; font-size: 18px; text-align: center; }
+.go-sos-track { position: relative; flex: 1; width: 96px; border-radius: 48px; background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.5); overflow: hidden; min-height: 240px; }
+.go-sos-fill { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(255,255,255,.25); }
+.go-sos-end { position: absolute; left: 0; right: 0; bottom: 26px; text-align: center; font-size: 22px; font-weight: 800; opacity: .8; }
+.go-sos-track.armed { background: #2b8a3e; border-color: #fff; }
+.go-sos-knob { position: absolute; left: 6px; top: 6px; width: 80px; height: 80px; border-radius: 50%; background: #fff; color: #7a0c0c; display: flex; align-items: center; justify-content: center;
+  font-size: 36px; box-shadow: 0 4px 14px rgba(0,0,0,.45); touch-action: none; cursor: grab; transition: transform .2s; }
+.go-sos-knob.drag { transition: none; cursor: grabbing; }
+.go-sos-ov .go-btn { width: 100%; max-width: 340px; }
+/* weather */
+.go-card h2 small { font-weight: 400; }
+.go-wx { width: 100%; border-collapse: collapse; font-size: 14px; }
+.go-wx td { padding: 6px 4px; border-bottom: 1px solid #edf1f5; vertical-align: middle; }
+.go-wx td.ic { font-size: 22px; text-align: center; line-height: 1.1; }
+.go-wx td.ic small { font-size: 11px; }
+.go-wx tr.trip td { background: #fff9db; }
