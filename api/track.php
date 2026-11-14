@@ -372,7 +372,7 @@ switch ($action) {
         $data = body_json();
         $d = device_by_token($data['token'] ?? '');
         $status = (string) ($data['status'] ?? '');
-        if (!in_array($status, ['ok', 'stopped', 'problem', 'contact'], true)) {
+        if (!in_array($status, ['ok', 'stopped', 'problem', 'contact', 'alert'], true)) {
             fail('Choose a status.');
         }
         $one = function ($v, int $max) {      // one line, trimmed

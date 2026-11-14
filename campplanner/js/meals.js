@@ -7,7 +7,8 @@ const Meals = (() => {
   const root = () => $('#tab-meals');
   const recipe = id => Store.state.recipes.find(r => r.id === id);
   const plan = () => Store.state.mealPlan;
-  const defaultServings = () => Math.max(1, Store.state.people.length);
+  /* how many to cook for: everyone with a place when registration is in use, otherwise the party on the Trip tab */
+  const defaultServings = () => { const R = typeof Rego !== 'undefined' && Rego.peek ? Rego.peek() : null, n = R && R.trip.reg !== 'off' ? R.people.filter(p => !p.wait).length : 0; return Math.max(1, n || Store.state.people.length); };
 
   function recipePerServing(r) {
     return r.ingredients.reduce((a, i) => ({ g: a.g + num(i.weightG), kcal: a.kcal + num(i.kcal), cost: a.cost + num(i.cost) }), { g: 0, kcal: 0, cost: 0 });

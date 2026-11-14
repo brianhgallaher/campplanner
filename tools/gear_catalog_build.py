@@ -22,6 +22,7 @@ STORES = {
     'altongoods': ('Alton Goods', 'https://altongoods.com/'),
     'drifta': ('Drifta', 'https://www.drifta.com.au/'),
     'seatosummit': ('Sea to Summit', 'https://seatosummit.com.au/'),
+    'wildearth': ('Wild Earth', 'https://www.wildearth.com.au/'),
 }
 SMALL = {'to', 'and', 'of', 'the', 'by', 'for'}
 

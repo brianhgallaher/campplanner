@@ -12,6 +12,9 @@ const Report = (() => {
   /* key, title, default paper, why that paper */
   const SECTIONS = [
     ['cover', '🧭 Cover & trip summary', 'a4p'],
+    ['parents', '👪 Parent information sheet', 'a4p'],
+    ['join', '📱 QR codes: phone app & registration', 'a4p'],
+    ['groups', '👥 Group plans (one per group)', 'a4p'],
     ['itinerary', '📅 Day-by-day itinerary', 'a4l'],
     ['map', '🗺️ Overview map', 'a3l'],
     ['mapkey', '📍 Map key & grid references', 'a4p'],
@@ -31,7 +34,7 @@ const Report = (() => {
   ];
   const HEAD_MM = 12; // section heading strip
 
-  let bound = false, maps = [], timer = null;
+  let bound = false, maps = [], timer = null, only = null;   // only: show and print just one section (the parent sheet)
   const views = new Map();          // map key → user-chosen centre/zoom, kept across re-renders
   const tried = new Set();          // async look-ups already attempted (don't loop on failures)
   const root = () => $('#tab-report');
@@ -46,7 +49,8 @@ const Report = (() => {
     s.report = s.report || {};
     const r = s.report;
     r.sections = r.sections || {};
-    SECTIONS.forEach(([k, , p]) => { r.sections[k] = Object.assign({ on: true, paper: p }, r.sections[k]); });
+    SECTIONS.forEach(([k, , p]) => { r.sections[k] = Object.assign({ on: k !== 'parents' && k !== 'groups', paper: p }, r.sections[k]); });   // the parent sheet is for families: off in the full report until ticked
+    r.parents = r.parents || {};
     if (r.labels == null) r.labels = true;
     if (r.grid == null) r.grid = true;
     if (r.dayAuto == null) r.dayAuto = true;   // day maps: orient to the direction of travel, split long diagonal days
@@ -70,6 +74,8 @@ const Report = (() => {
       case 'daymaps': return X.analysed.some(T => T.days > 1 || T.legs.length > 1);
       case 'traverse': case 'egress': case 'drops': return X.trails.length > 0;
       case 'weather': return st().trip.lat != null;
+      case 'join': return !!(joinLinks().go || joinLinks().reg);
+      case 'groups': return !!(typeof Rego !== 'undefined' && Rego.peek() && Rego.peek().groups.length);
       case 'meals': case 'shopping': return Object.keys(st().mealPlan).length > 0;
       case 'gear': case 'weight': return st().gear.length > 0;
       default: return true;
@@ -164,6 +170,129 @@ const Report = (() => {
         ${t.notes ? `<h3>Notes</h3><p class="rpt-notes">${esc(t.notes)}</p>` : ''}
         <p class="muted small rpt-foot">Prepared ${dateTxt(new Date())} with Camp Planner. Distances, times, weights and costs are planning estimates — check track conditions, closures, fire danger and the forecast with the park authority before you go.</p>
       </div>`);
+  }
+
+  /* ---------- parent information sheet ----------
+     For families: when and where to drop off and collect, what to pack, who to call and the forecast.
+     Leaves out the route, grid references, body weights and medical details. */
+  const FIELDS = [
+    ['meet', 'Meeting point', 'e.g. Grafton Scout Hall'], ['meetTime', 'Drop-off time', 'e.g. 7:30 am'],
+    ['pickup', 'Pick-up point', 'Same as the meeting point'], ['pickupTime', 'Pick-up time (approx.)', 'e.g. 4:00 pm'],
+    ['leaders', 'Leader contacts', 'Name and mobile, one per line'], ['cost', 'Cost', 'e.g. $45 — pay by …'],
+    ['notes', 'Other notes for families', 'Forms to return, phones, pocket money…']
+  ];
+  const ampm = m => {
+    if (m == null || !isFinite(m)) return '';
+    const mm = ((Math.round(m / 5) * 5 % 1440) + 1440) % 1440, h = Math.floor(mm / 60);
+    return `${h % 12 || 12}:${String(mm % 60).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
+  };
+  /* Suggested drop-off / pick-up from the travel plan: 15 minutes before the first car leaves, 15 minutes after the last is home */
+  function parentDefaults(X) {
+    const P = X.P, home = st().travel.home;
+    let dep = null, back = null;
+    try {
+      if (P.cars.length) {
+        const tt = Travel.timetable(P);
+        const outs = tt.out.map(r => r[0]).filter(Number.isFinite), rets = tt.ret.map(r => r[0]).filter(Number.isFinite);
+        if (outs.length) dep = Math.min(...outs) - 15;
+        if (rets.length) back = Math.max(...rets) + 15;
+      }
+    } catch (e) { /* no travel plan yet */ }
+    return { meet: home ? home.name : '', meetTime: ampm(dep), pickup: home ? home.name : '', pickupTime: ampm(back), leaders: '', cost: '', notes: '' };
+  }
+  const parentVal = (X, k) => { const v = (cfg().parents[k] || '').trim(); return v || parentDefaults(X)[k] || ''; };
+
+  function parents(X, paper) {
+    const s = st(), t = s.trip, em = s.emergency, v = k => parentVal(X, k);
+    const blank = '<span class="rpt-blank"></span>';
+    const a = parseDate(t.start), b = parseDate(t.end) || a;
+    const long = d => fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const short = d => fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' });
+    const where = [t.location, t.park ? `${t.park.name} ${t.park.type}` : '', t.state].filter(Boolean).join(', ');
+    /* personal kit: what people carry or wear themselves (not group gear), each item once */
+    const seen = new Map();
+    s.gear.filter(g => g.carrier !== 'group').forEach(g => {
+      const key = String(g.name || '').trim().toLowerCase();
+      if (key && !seen.has(key)) seen.set(key, g);
+    });
+    const kit = [...seen.values()];
+    const cats = [...new Set([...GEAR_CATEGORIES, ...kit.map(g => g.category)])].filter(c => kit.some(g => g.category === c));
+    /* forecast for the trip days, when it's loaded and the trip is in range */
+    const c = s.weather && s.weather.cache;
+    let wx = '';
+    if (c && c.key === Weather.locKey()) {
+      const d = c.data.daily, td = new Set(X.days.filter(x => x.date).map(x => isoDate(x.date)));
+      const rows = d.time.map((day, i) => ({ day, i })).filter(r => td.has(r.day));
+      if (rows.length) wx = `<table class="tbl compact"><thead><tr><th>Day</th><th>Weather</th><th class="num">Max / min</th><th class="num">Rain</th><th class="num">Wind</th></tr></thead><tbody>
+        ${rows.map(({ day, i }) => { const [ic, txt] = Weather.wmo(d.weather_code[i]); return `<tr><td><b>${Weather.dayLabel(Weather.tms(day))}</b></td><td>${ic} ${txt}</td>
+          <td class="num"><b>${Math.round(d.temperature_2m_max[i])}°</b> / ${Math.round(d.temperature_2m_min[i])}°</td>
+          <td class="num">${d.precipitation_probability_max[i] != null ? d.precipitation_probability_max[i] + '%' : ''}${(d.precipitation_sum[i] ?? 0) >= 0.2 ? ` · ${d.precipitation_sum[i].toFixed(1)} mm` : ''}</td>
+          <td class="num">${Math.round(d.wind_speed_10m_max[i])} km/h</td></tr>`; }).join('')}</tbody></table>
+        <p class="muted small">Forecast from ${new Date(c.at).toLocaleDateString()} — it can change, so pack for cold and wet weather anyway.</p>`;
+    }
+    if (!wx) wx = '<p class="small muted">The forecast isn’t available yet (it covers the next 16 days). Pack for cold nights and rain, and check the Bureau of Meteorology forecast before the trip.</p>';
+    const lines = txt => esc(txt).replace(/\n/g, '<br>');
+    const nights = X.days.length - 1;
+    return sheet('parents', paper, '👪 Information for parents and carers', `
+      <div class="rpt-parents">
+        <h1>${esc(t.name)}</h1>
+        <p class="rpt-dates">${a ? long(a) + (+b !== +a ? ` – ${long(b)}` : '') : 'Dates to be confirmed'}${nights > 0 ? ` · ${nights} night${nights > 1 ? 's' : ''}` : ''}</p>
+        ${where ? `<p>📍 ${esc(where)}</p>` : ''}
+        <div class="rpt-cols">
+          <div class="rpt-pbox"><h3>🚗 Drop-off</h3><p><b>${esc(v('meetTime')) || blank}</b>${a ? ` · ${short(a)}` : ''}</p><p>${esc(v('meet')) || blank}</p></div>
+          <div class="rpt-pbox"><h3>🏠 Pick-up</h3><p><b>${esc(v('pickupTime')) || blank}</b>${b ? ` · ${short(b)}` : ''}</p><p>${esc(v('pickup')) || blank}</p>
+            <p class="small muted">Approximate — leaders will let you know if the group is running late.</p></div>
+        </div>
+        <div class="rpt-cols">
+          <div><h3>📞 Contacts</h3>
+            <table class="kv">
+              <tr><th>Leaders</th><td>${v('leaders') ? lines(v('leaders')) : blank}</td></tr>
+              ${em.contact ? `<tr><th>Contact at home during the trip</th><td>${esc(em.contact)}</td></tr>` : ''}
+              ${em.ranger ? `<tr><th>Park office</th><td>${esc(em.ranger)}</td></tr>` : ''}
+              <tr><th>Emergency</th><td><b>000</b>, then let the leaders know</td></tr>
+            </table>
+            ${v('cost') ? `<h3>💰 Cost</h3><p>${lines(v('cost'))}</p>` : ''}
+            ${v('notes') ? `<h3>📝 Notes</h3><p>${lines(v('notes'))}</p>` : ''}
+          </div>
+          <div><h3>🌦️ Weather</h3>${wx}</div>
+        </div>
+        <h3>🎒 What to bring</h3>
+        ${kit.length ? `<div class="rpt-gear">${cats.map(cat => `<div class="rpt-gcat"><h4>${esc(cat)}</h4><ul class="rpt-kit">${kit.filter(g => g.category === cat).map(g =>
+          `<li>${box} ${esc(g.name)}${g.type === 'worn' ? ' <small class="muted">(wear)</small>' : ''}</li>`).join('')}</ul></div>`).join('')}</div>
+          <p class="muted small">Please label everything. Group gear (tents, stoves, food) is supplied.</p>`
+          : '<p class="muted">The kit list will follow. Group gear (tents, stoves, food) is supplied.</p>'}
+        <p class="muted small rpt-foot">Prepared ${dateTxt(new Date())} by the trip leaders.</p>
+      </div>`);
+  }
+
+  /* ---------- QR codes: join the phone app (location sharing) and register ----------
+     Only leaders have these links, so the page is only offered to the trip's team. */
+  function joinLinks() {
+    const base = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
+    const code = typeof Live !== 'undefined' && Store.canEdit ? Live.joinCode() : null, R = typeof Rego !== 'undefined' ? Rego.peek() : null;
+    return { code, go: code ? `${base}go.html?code=${code}` : '', reg: R && R.trip.regToken && R.trip.reg !== 'off' ? RegoLib.link.register(R.trip.regToken) : '', regState: R ? R.trip.reg : 'off' };
+  }
+  function joinSheet(X, paper) {
+    const J = joinLinks(), t = st().trip, pretty = J.code ? J.code.replace(/(.{4})(.{4})/, '$1 $2') : '';
+    const block = (title, url, steps, foot) => `<div class="rpt-qr"><div class="rpt-qr-code">${RegoLib.qr(url, 260)}</div>
+        <div><h2>${title}</h2><ol>${steps.map(x => `<li>${x}</li>`).join('')}</ol><p class="small rpt-qr-url">${esc(url)}</p>${foot || ''}</div></div>`;
+    return sheet('join', paper, '📱 Scan to join', `
+      <div class="rpt-parents"><h1>${esc(t.name)}</h1><p class="rpt-dates">${tripSpan()}</p></div>
+      ${J.go ? block('📍 Share your location on the trip', J.go, ['Point your phone\'s camera at the code and open the link.', 'Type your name and your group, like <b>Alex Scout (Kookaburras)</b>, and tap <b>Join</b>. The trip\'s code is filled in for you.',
+        'Allow location when the phone asks, then turn on <b>Share my location</b> on the Status screen.', 'Add it to your home screen so it opens without service.'],
+        `<p>No camera? Go to the phone app and enter the join code <b class="rpt-qr-join">${esc(pretty)}</b>.</p><p class="small muted">Only the trip's leaders see locations. The app also holds the plan, map and emergency details offline, and has an <b>ALERT</b> button that tells home base you need help.</p>`) : ''}
+      ${J.reg ? block(J.regState === 'interest' ? '🙋 Express your interest' : '✍️ Register for this activity', J.reg, ['Point your phone\'s camera at the code and open the link.',
+        J.regState === 'interest' ? 'Enter your name and a phone number, and join or start a group.' : 'Fill in the participant\'s details, emergency contact and consent, and join or start a group.',
+        'Keep the page it gives you: it is where you tick off your gear, read the briefing and find your own QR card.'],
+        J.regState === 'closed' ? '<p class="bad-text">Registration is closed at the moment.</p>' : '<p class="small muted">A parent or carer registers for a youth member. Details are deleted 30 days after the activity.</p>') : ''}`);
+  }
+
+  /* ---------- each group's own plan: people, travel, meals, pack weights, risks, costs ---------- */
+  function groupSheets(X, paper) {
+    const R = Rego.peek(), t = { ...R.trip, info: Rego.info() };
+    return R.groups.map(g => sheet('groups', paper, `👥 ${esc(g.name)} — group plan`,
+      `<div class="rpt-group">${RegoLib.groupReport(t, g, R.people.filter(p => p.group === g.id), R.cars.filter(c => c.group === g.id)).replace(/^<section class="rg-sheet">\s*<header>[\s\S]*?<\/header>/, '').replace(/<\/section>\s*$/, '')}</div>`, 'group plan')
+      + sheet('groups', paper, `⛑️ ${esc(g.name)} — emergency sheet`, RegoLib.emergencySheet(t, g, R.people.filter(p => p.group === g.id), R.cars.filter(c => c.group === g.id), { bare: true }), 'emergency sheet')).join('');
   }
 
   function itinerary(X, paper) {
@@ -779,14 +908,19 @@ const Report = (() => {
       <p class="muted small">Estimates — confirm fees and prices when booking.</p>`);
   }
 
-  const BUILD = { cover, itinerary, map: mapSheet, mapkey: mapKey, daymaps: dayMaps, traverse, egress, drops, travel, meals, shopping, gear, weight, risk, emergency, weather, budget };
+  const BUILD = { cover, parents, join: joinSheet, groups: groupSheets, itinerary, map: mapSheet, mapkey: mapKey, daymaps: dayMaps, traverse, egress, drops, travel, meals, shopping, gear, weight, risk, emergency, weather, budget };
 
   /* ---------- render ---------- */
   function render() {
     if (!bound) bind();
     destroyMaps();
+    /* the registration link comes from the People tab's data: fetch it once, then draw again */
+    if (Store.canEdit && Store.tripId && typeof Rego !== 'undefined' && !Rego.peek() && !tried.has('rego:' + Store.tripId)) {
+      tried.add('rego:' + Store.tripId);
+      Rego.data().then(d => { if (d && App.current === 'report') render(); });
+    }
     const C = cfg(), X = context();
-    const included = SECTIONS.filter(([k]) => C.sections[k].on && available(k, X)).map(([k, title]) => [k, title, C.sections[k].paper]);
+    const included = SECTIONS.filter(([k]) => (only ? k === only : C.sections[k].on && available(k, X))).map(([k, title]) => [k, title, C.sections[k].paper]);
     const counts = {};
     let html = '';
     included.forEach(([k, , p]) => {
@@ -802,6 +936,7 @@ const Report = (() => {
             <button class="btn" data-r="mixed" title="Maps on A3, wide tables on A4 landscape, lists on A4 portrait">Mixed A4 + A3</button>
             <button class="btn" data-r="a4" title="For printers without A3">All A4</button>
             <button class="btn" data-r="refit" title="Re-fit every map to its route">↺ Re-fit maps</button>
+            <button class="btn" data-r="parents" title="Print or save just the sheet for families: dates, drop-off and pick-up, kit list, contacts and weather">👪 Parent sheet</button>
             <button class="btn primary" data-r="print">🖨 Print / Save as PDF</button>
           </div></div>
         <p class="small">${included.length} sections · ${Object.entries(counts).map(([p, nn]) => `${nn} × ${PAPER[p].label}`).join(' · ')} (long sections continue onto more pages of the same size).
@@ -811,6 +946,11 @@ const Report = (() => {
           return `<label class="rpt-sec ${ok ? '' : 'off'}"><input type="checkbox" data-sec="${k}" ${sc.on && ok ? 'checked' : ''} ${ok ? '' : 'disabled'}> ${title}
             <select data-paper="${k}" ${ok ? '' : 'disabled'}>${Object.entries(PAPER).map(([pk, P]) => `<option value="${pk}" ${sc.paper === pk ? 'selected' : ''}>${P.label}</option>`).join('')}</select></label>`;
         }).join('')}</div>
+        <details class="rpt-pform" ${C.sections.parents.on ? 'open' : ''}><summary><b>👪 Parent information sheet</b> — details for families <small class="muted">(leave a box empty to use the suggestion from the travel plan)</small></summary>
+          <div class="rpt-pgrid">${FIELDS.map(([k, label, ph]) => { const d = parentDefaults(X)[k];
+            return `<label>${label}${k === 'leaders' || k === 'notes' ? `<textarea data-pf="${k}" rows="2" placeholder="${esc(d || ph)}">${esc(C.parents[k] || '')}</textarea>` : `<input data-pf="${k}" value="${esc(C.parents[k] || '')}" placeholder="${esc(d || ph)}">`}</label>`; }).join('')}</div>
+          <p class="muted small">The sheet leaves out the route, grid references, body weights and medical details. Its kit list is everyone's personal gear (not group gear), each item once.</p>
+        </details>
         <div class="row wrap">
           <label class="check"><input type="checkbox" data-opt="labels" ${C.labels ? 'checked' : ''}> Label landmarks on maps</label>
           <label class="check"><input type="checkbox" data-opt="grid" ${C.grid ? 'checked' : ''}> MGA grid on maps</label>
@@ -1014,6 +1154,7 @@ const Report = (() => {
       if (el.dataset.sec) C.sections[el.dataset.sec].on = el.checked;
       else if (el.dataset.paper && el.tagName === 'SELECT') { C.sections[el.dataset.paper].paper = el.value; views.clear(); }
       else if (el.dataset.opt) C[el.dataset.opt] = el.checked;
+      else if (el.dataset.pf) C.parents[el.dataset.pf] = el.value;
       else return;
       Store.save();
       render();
@@ -1023,6 +1164,12 @@ const Report = (() => {
       if (!b) return;
       const C = cfg();
       if (b.dataset.r === 'print') return print();
+      if (b.dataset.r === 'parents') {            // just the parent sheet: show it alone, print, then put the full report back
+        only = 'parents'; render();
+        const back = () => { window.removeEventListener('afterprint', back); only = null; render(); };
+        window.addEventListener('afterprint', back);
+        return print();
+      }
       if (b.dataset.r === 'mixed') SECTIONS.forEach(([k, , p]) => { C.sections[k].paper = p; });
       if (b.dataset.r === 'a4') SECTIONS.forEach(([k]) => { C.sections[k].paper = C.sections[k].paper.replace('a3', 'a4'); });
       views.clear();

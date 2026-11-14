@@ -9,7 +9,7 @@ const App = {
     Account.init();
     Help.init();
     Live.init();
-    this.modules = { trips: Trips, trip: Trip, map: MapView, traverse: Traverse, travel: Travel, budget: Budget, meals: Meals, gear: Gear, weight: Weight, risk: Risk, weather: Weather, report: Report };
+    this.modules = { trips: Trips, trip: Trip, map: MapView, traverse: Traverse, people: Rego, travel: Travel, budget: Budget, meals: Meals, gear: Gear, weight: Weight, risk: Risk, weather: Weather, report: Report, dash: Dash };
     $('#tabs').addEventListener('click', e => {
       const b = e.target.closest('button[data-tab]');
       if (b) this.show(b.dataset.tab);
@@ -39,6 +39,7 @@ const App = {
     $$('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + tab));
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* file:// in some browsers */ }
     this.modules[tab].render();
+    Rego.refreshBar().then(() => Rego.decorate(tab));
     window.scrollTo(0, 0);
   },
 

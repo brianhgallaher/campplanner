@@ -89,7 +89,7 @@
       <p>Enter the join code your leader gave you. The plan and map are then kept on this phone, so they work without service.</p>
       <form id="joinForm">
         <label>Join code<input id="jCode" inputmode="latin" autocapitalize="characters" autocomplete="off" maxlength="9" placeholder="ABCD 2345" value="${esc(code)}" required></label>
-        <label>Your name<input id="jName" maxlength="40" autocomplete="name" placeholder="e.g. Sam (Kookaburra patrol)" required></label>
+        <label>Your name<input id="jName" maxlength="40" autocomplete="name" placeholder="e.g. Sam (Kookaburra patrol)" value="${esc(new URLSearchParams(location.search).get('name') || '')}" required></label>
         <p class="go-err" id="jErr"></p>
         <button class="go-btn primary">Join</button>
       </form>
@@ -288,7 +288,7 @@
   const linkPhones = s => s.replace(/(\+?\d[\d ]{7,}\d)/g, m => `<a href="tel:${m.replace(/\s/g, '')}">${m}</a>`);
 
   /* ---------- status and a one-line message for the leaders ---------- */
-  const STATUS = { ok: ['✅', 'OK — on the move'], stopped: ['⏸️', 'Stopped'], problem: ['🛠️', 'Sorting out a minor problem'], contact: ['📞', 'Trying to contact home base'] };
+  const STATUS = { ok: ['✅', 'OK — on the move'], stopped: ['⏸️', 'Stopped'], problem: ['🛠️', 'Sorting out a minor problem'], contact: ['📞', 'Trying to contact home base'], alert: ['🚨', 'ALERT — we need help'] };
   let say = store.get('say', null);            // { status, note, message, t, sent }
   async function sendSay() {
     if (!say || say.sent || !me || !navigator.onLine) return;

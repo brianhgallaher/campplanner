@@ -18,7 +18,7 @@ function num(v, d = 0) { const n = parseFloat(v); return isFinite(n) ? n : d; }
 function fmtKg(g, dp = 2) { return (g / 1000).toFixed(dp) + ' kg'; }
 function fmtG(g) { return Math.abs(g) >= 1000 ? fmtKg(g) : Math.round(g) + ' g'; }
 function fmtMoney(v) { return (v || 0).toLocaleString('en-AU', { style: 'currency', currency: 'AUD' }); }
-function fmtMins(m) { const h = Math.floor(m / 60), mm = Math.round(m % 60); return h ? `${h}h ${String(mm).padStart(2, '0')}m` : `${mm} min`; }
+function fmtMins(m) { const t = Math.round(m), h = Math.floor(t / 60), mm = t % 60; return h ? `${h}h ${String(mm).padStart(2, '0')}m` : `${mm} min`; }
 
 function isoDate(d) {
   const p = n => String(n).padStart(2, '0');

@@ -3,7 +3,7 @@
    Item keys: s store, n name, b brand, c planner category, u store's own category, w weight g, p price AUD, l url, a specs */
 
 const Catalog = (() => {
-  const SRC = 'data/gear-catalog.json?v=20261113b';
+  const SRC = 'data/gear-catalog.json?v=20261114n';
   const PAGE = 60;
   const ACCESSORY = /\b(sheets?|straps?|repair|spares?|replacement|covers?|stuff sack|storage bag|pump|valve|footprint|pegs?|poles?|patch|repair kit|adaptor|adapter|pouch|cord|guy|buckle|hose|parts?)\b/;
   let data = null, loading = null;

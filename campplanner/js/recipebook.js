@@ -3,7 +3,7 @@
    Each recipe is in the planner's own format (quantities per serving) plus tags, prepMin and source {site,title,url}. */
 
 const RecipeBook = (() => {
-  const SRC = 'data/recipe-library.json?v=20261113c';
+  const SRC = 'data/recipe-library.json?v=20261115f';
   const PAGE = 40;
   let data = null, loading = null;
   let st = { q: '', slot: '', tag: '', site: '', maxW: '', sort: 'best', shown: PAGE, open: null };

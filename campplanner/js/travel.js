@@ -8,6 +8,9 @@ const Travel = (() => {
   const SHUFFLE_KM = 1;        // start & finish further apart than this need a shuffle (or a shuttle)
   const BREAK_EVERY = 120, BREAK_MIN = 15, BREAK_OVER = 180; // driver reviver: drives over 3 h get a 15 min break every 2 h
   const BREAK_SLACK = 15;          // a rest stop can be 15 min either side of the 2-hour mark, to land in a town
+  const MEAL_OVER = 240, MEAL_MIN = 40, MEAL_SLACK = 50;   // drives over 4 h stop for meals: 40 min, within 50 min of the meal time, in a town where possible
+  const NIGHT_OVER = 720, DAY_DRIVE = 600, NIGHT_MIN = 600;   // travel over 12 h: stop overnight (10 h) in a town, at most about 10 h of driving a day
+  const MEALS = [['breakfast', 7 * 60 + 30, '🍳'], ['lunch', 12 * 60 + 30, '🥪'], ['dinner', 18 * 60 + 30, '🍽️']];
   const FUEL_MIN = 15, BOTH_MIN = 20, RESERVE = 0.2;   // fuel stop 15 min, rest + fuel 20 min; refuel before 20% left
   const STOPS_SRC = 'data/stops.json?v=20261113a';
   let stopsData = null, stopsLoading = null, stopsErr = '';
@@ -23,7 +26,7 @@ const Travel = (() => {
   const ENERGY = { petrol: [34.2, 0.24], diesel: [38.6, 0.30], lpg: [26.0, 0.22], ev: [3.6, 0.85] };
   const energyOf = car => ENERGY[car.fuel === 'diesel' ? 'diesel' : car.fuel === 'lpg' ? 'lpg' : car.fuel === 'ev' ? 'ev' : 'petrol'];
   const MASS = 1900;          // kg — a loaded family car / small 4WD with people and gear
-  let bound = false, map = null, fetching = false, progress = '', dirSel = '';
+  let bound = false, map = null, fetching = false, progress = '', dirSel = '', regoAsked = null;
   const root = () => $('#tab-travel');
   const T = () => Store.state.travel;
 
@@ -93,7 +96,7 @@ const Travel = (() => {
     const econ = carEcon(car);
     const flat = (alt ? alt.km : km || 0) * econ / 100;
     if (!alt || !alt.elev || alt.elev.d.length < 2) return { amount: flat, flat, extra: 0, saved: 0 };
-    const [mj, eff] = energyOf(car), mass = num(car.mass, MASS), ev = car.fuel === 'ev';
+    const [mj, eff] = energyOf(car), mass = num(car.mass, MASS) + num(car.trailerKg), ev = car.fuel === 'ev';
     const { d, h } = alt.elev, scale = alt.km * 1000 / (d[d.length - 1] || 1);
     let extra = 0, saved = 0;
     for (let i = 1; i < d.length; i++) {
@@ -104,7 +107,41 @@ const Travel = (() => {
     }
     return { amount: Math.max(flat * 0.3, flat + extra - saved), flat, extra, saved };
   }
-  const carEcon = car => num(car.economy, fuelOf(car).economy) * (1 + num(car.extraPct) / 100);
+  /* ---------- what each car carries ----------
+     People (their own body weights where the group has entered them, otherwise adults 85 kg, youth 55 kg), their packs
+     (weighed, or worked out from the gear lists, otherwise 15 kg), extra gear, jerry cans and the trailer's weight on the tow ball,
+     against the car's payload; the trailer against its towing capacity; and everything together against the
+     combined limit (GCM) when one is given. Load beyond 300 kg adds about 1% fuel per 45 kg; a trailer adds about
+     10% plus 1% per 45 kg. Estimates only — check the car's handbook and compliance plate. */
+  const PAYLOAD = 500, TOW = 1500, CAN_L = 25, CAN_KG = 22, ADULT_KG = 85, YOUTH_KG = 55, PACK_KG = 15;
+  const loads = new Map();        // car id -> load facts for the plan being worked out
+  function loadOf(car, nPeople, nCars) {
+    const R = typeof Rego !== 'undefined' && Rego.peek ? Rego.peek() : null;
+    let adults = 0, youth = 0, packs = 0, known = false, people = null, bodyN = 0, packN = 0;
+    if (R && car.regoCar) {
+      const ps = R.people.filter(p => p.car === car.regoCar && !p.wait);
+      if (ps.length) {
+        known = true; people = 0;
+        adults = ps.filter(p => p.kind === 'adult').length; youth = ps.length - adults;
+        ps.forEach(p => {
+          const g = R.groups.find(x => x.id === p.group), plan = (g && g.plan) || {}, w = (plan.weights || {})[p.id] || {};
+          if (+w.body > 0) { people += +w.body; bodyN++; } else people += p.kind === 'adult' ? ADULT_KG : YOUTH_KG;
+          let pk = +w.pack > 0 ? +w.pack : null;         // weighed; otherwise from the gear lists (as the Pack Weight screens show it)
+          if (pk == null && typeof RegoLib !== 'undefined' && RegoLib.packState) { try { const s = RegoLib.packState(R.trip, plan, p); if (s && s.pack > 0) pk = s.pack; } catch (e) { pk = null; } }
+          if (pk != null) { packs += pk; packN++; } else packs += PACK_KG;
+        });
+      }
+    }
+    if (!known) { adults = Math.min(num(car.seats, 5), Math.max(1, Math.ceil(nPeople / Math.max(1, nCars)))); packs = adults * PACK_KG; }
+    if (people == null) people = adults * ADULT_KG + youth * YOUTH_KG;
+    people = Math.round(people);
+    const gear = num(car.gearKg), trailer = num(car.trailerKg), ball = trailer ? Math.round(trailer * 0.1) : 0;
+    const inCar = Math.round(people + packs + gear + ball);
+    return { n: adults + youth, adults, youth, people, packs: Math.round(packs), gear, trailer, ball, inCar, known, bodyN, packN,
+      pct: Math.max(0, (inCar - 300) / 45) + (trailer ? 10 + trailer / 45 : 0), payload: num(car.payload, PAYLOAD), tow: num(car.towMax, TOW), gcm: num(car.gcm) };
+  }
+  const loadPct = car => (loads.get(car.id) ? loads.get(car.id).pct : 0);
+  const carEcon = car => num(car.economy, fuelOf(car).economy) * (1 + num(car.extraPct) / 100) * (1 + loadPct(car) / 100);
   const refCar = () => T().cars[0] || { fuel: 'ulp91', economy: FUEL_TYPES.ulp91.economy, extraPct: 10, mass: MASS };
 
   /* Pick the route for a leg: fastest, least fuel, or the lowest cost counting time at $/hour */
@@ -261,6 +298,8 @@ const Travel = (() => {
     };
     /* headline distances from the group home */
     const toStart = leg('Home → start', H, S), between = leg('Start ↔ finish', S, F), fromFinish = leg('Finish → home', F, H);
+    loads.clear();
+    cars.forEach(car => loads.set(car.id, loadOf(car, nPeople, cars.length)));
     const carPlans = cars.map(car => {
       const h = homeOf(car), role = roleOf(car);
       let legs;
@@ -278,7 +317,7 @@ const Travel = (() => {
       const up = legs.reduce((s, l) => s + (l.r && l.r.alt && l.r.alt.up || 0), 0), down = legs.reduce((s, l) => s + (l.r && l.r.alt && l.r.alt.down || 0), 0);
       const cost = amount * priceOf(car);
       const range = num(car.tank) ? num(car.tank) / econ * 100 : null;
-      return { car, home: h, role, legs, complete, km, min, econ, amount, flat, up, down, unit: f.unit, price: priceOf(car), cost, range };
+      return { car, home: h, role, legs, complete, km, min, econ, amount, flat, up, down, unit: f.unit, price: priceOf(car), cost, range, load: loads.get(car.id) };
     });
     const P = { S, F, H, apart, through, mode, cars: carPlans, toStart, between, fromFinish, needs, used, nPeople, walkKm: walkKm(S, F) };
     P.fuelCost = carPlans.reduce((s, c) => s + c.cost, 0);
@@ -304,7 +343,14 @@ const Travel = (() => {
     }
     if (P.mode === 'shuttle' && !num(T().shuttleCost)) out.push(['warn', 'Book a shuttle / taxi from the finish to the start, and enter its cost below so it shows in the Budget.']);
     if (P.mode === 'none' && P.through) out.push(['warn', `Start and finish are ${P.apart.toFixed(1)} km apart — with no shuffle you must walk back to the start.`]);
+    if (stopsData && cars.length) schedule(P);
     cars.forEach(c => {
+      const F = loadFacts(c);
+      if (F.over > 0) out.push(['bad', `${esc(c.car.name)} is <b>overloaded by ${Math.round(F.over)} kg</b>: ${F.total} kg of people, packs${F.cans ? ', fuel cans' : ''} and gear against a ${F.payload} kg payload. Move people or gear to another car${c.load.trailer ? '' : ', or add a trailer'}.`]);
+      else if (F.total > F.payload * 0.9) out.push(['warn', `${esc(c.car.name)} is close to its payload: ${F.total} of ${F.payload} kg.`]);
+      if (c.load.trailer > c.load.tow) out.push(['bad', `${esc(c.car.name)}: the trailer (${c.load.trailer} kg loaded) is over the ${c.load.tow} kg towing capacity.`]);
+      if (F.gcmOver > 0) out.push(['bad', `${esc(c.car.name)}: car, load and trailer together are ${Math.round(F.gcmOver)} kg over the ${c.load.gcm} kg combined limit (GCM).`]);
+      if (F.cans) out.push(['warn', `${esc(c.car.name)} must carry <b>${F.cans} × ${CAN_L} L jerry can${F.cans > 1 ? 's' : ''}</b> (${F.cans * CAN_KG} kg): there is nowhere to buy fuel on part of the route. Each can is emptied whole at a planned stop. Carry them outside the cabin, secured upright.`]);
       if (c.range && c.km > c.range * 0.9) out.push(['warn', `${esc(c.car.name)}: ${Math.round(c.km)} km trip vs ~${Math.round(c.range)} km per ${c.unit === 'kWh' ? 'charge' : 'tank'} — plan a ${c.unit === 'kWh' ? 'charging stop' : 'refuel'} (fill up in the last town before the park).`]);
       if (c.unit === 'kWh') out.push(['tip', `${esc(c.car.name)} is electric — check chargers along the route; remote trailheads rarely have one.`]);
     });
@@ -338,20 +384,248 @@ const Travel = (() => {
      shuttle) at the same time. With a walk start time (Trip tab) the plan works backwards from it; otherwise the car
      with the longest drive leaves at "First car leaves home at". */
   function schedule(P) {
-    if (stopsData) P.cars.forEach(c => planStops(c));
-    const drives = P.cars.map(c => (c.legs[0] && c.legs[0].r ? c.legs[0].r.min + legStopMin(c, 0) : null));
-    const longest = Math.max(0, ...drives.filter(x => x != null));
     const fromStart = !!startTime();
-    const meet = fromStart ? toMin(startTime()) - walkOffset(P) : toMin(T().departTime) + longest;
-    const dep = meet - longest;
+    /* with a walk start time the arrival is fixed, so nights on the way there are planned back from it */
+    const arriveBy = fromStart ? toMin(startTime()) - walkOffset(P) : null;
+    if (stopsData) { P.cars.forEach(c => { planStops(c); planNights(c, 0, arriveBy); if (c.legs.length > 1) planNights(c, c.legs.length - 1, null); }); addDetours(P); }
+    let drives, longest, meet, dep;
+    const times = () => {
+      drives = P.cars.map(c => (c.legs[0] && c.legs[0].r ? c.legs[0].r.min + legStopMin(c, 0) : null));
+      longest = Math.max(0, ...drives.filter(x => x != null));
+      meet = fromStart ? toMin(startTime()) - walkOffset(P) : toMin(T().departTime) + longest;
+      dep = meet - longest;
+      P.cars.forEach((c, i) => {
+        c.drive = drives[i];
+        c.stops = drives[i] == null ? 0 : c.stopPlan ? c.stopPlan.legs[0].stops.length : breaksIn(c.legs[0].r.min);
+        c.leaveAt = drives[i] == null ? dep : meet - drives[i];
+        c.arriveAt = drives[i] == null ? null : meet;
+      });
+    };
+    times();
+    if (stopsData) {
+      /* meal stops depend on the time of day, and the time of day depends on how long the stops take: settle it in two passes */
+      for (let pass = 0; pass < 3; pass++) { P.cars.forEach(c => { if (c.leaveAt != null && c.legs[0] && c.legs[0].r) { if (fromStart) fitNights(c, 0, meet, true); else fitNights(c, 0, c.leaveAt, false); planMeals(c, 0, meet - c.legs[0].r.min - legStopMin(c, 0)); } }); times(); }
+      const fs = P.between.r ? withBreaks(P.between.r.min) : 0, end = toMin(T().walkEndTime), home = P.mode === 'shuffle' ? end + 30 + fs : end + 20;
+      P.cars.forEach(c => { if (c.legs.length > 1) { const li = c.legs.length - 1; for (let pass = 0; pass < 2; pass++) { fitNights(c, li, home, false); planMeals(c, li, home); } } });
+    }
     P.fromStart = fromStart;
-    P.cars.forEach((c, i) => {
-      c.drive = drives[i];
-      c.stops = drives[i] == null ? 0 : c.stopPlan ? c.stopPlan.legs[0].stops.length : breaksIn(c.legs[0].r.min);
-      c.leaveAt = drives[i] == null ? dep : meet - drives[i];
-      c.arriveAt = drives[i] == null ? null : meet;
-    });
     return { dep, meet, longest, fromStart };
+  }
+
+  /* Overnight stops on one leg (after planStops): when the travel takes over 12 hours, stay the night in towns along
+     the way so no day has much more than 10 hours of driving.
+     arriveBy = clock time the leg must end (a fixed walk start), or null when the departure is what's fixed.
+     With a morning arrival the last night is in the last town before the destination, so the final drive is short. */
+  function planNights(c, li, arriveBy) {
+    const L = c.stopPlan && c.stopPlan.legs[li], l = c.legs[li];
+    if (!L || !l || !l.r || !l.r.alt) return;
+    L.stops = L.stops.filter(x => !x.overnight);
+    const sum = () => { L.extra = L.stops.reduce((a, x) => a + x.dur, 0); };
+    sum();
+    const alt = l.r.alt, tot = alt.min;
+    if (tot + L.extra <= NIGHT_OVER) return;
+    const T0 = clockOf(alt), cands = candidates(alt).filter(x => x.d > 3 && x.d < alt.km - 3), marks = [];
+    const STEP = DAY_DRIVE - 30;
+    if (arriveBy != null) {
+      let m = tot;
+      if ((((arriveBy % 1440) + 1440) % 1440) < 13 * 60) { marks.push([tot - 60, 120, true]); m = tot - 60; }      // sleep near the start, drive in fresh
+      while (m > DAY_DRIVE + 60) { m -= STEP; marks.push([m, 90, false]); }
+    } else {
+      let m = 0;
+      while (tot - m > DAY_DRIVE + 60) { m += STEP; marks.push([m, 90, false]); }
+    }
+    marks.forEach(([m, slack, nearEnd]) => {
+      const opts = cands.filter(x => Math.abs(T0.minAt(x.d) - m) <= slack && tot - T0.minAt(x.d) >= 15 && !L.stops.some(q => q.overnight && Math.abs(q.d - x.d) < 30));
+      const towns = opts.filter(x => x.cls >= 1);
+      const best = (towns.length ? towns : opts).sort((a, b) => (b.cls * 4 - Math.abs(T0.minAt(b.d) - m) / 15) - (a.cls * 4 - Math.abs(T0.minAt(a.d) - m) / 15))[0];
+      const pick = best || { name: nearEnd ? 'a campsite near the walk start' : 'a safe place to camp near the road', cls: -2, d: T0.kmAt(m), off: 0, fuel: false, ev: false, roadside: true };
+      L.stops.push({ ...pick, at: T0.minAt(pick.d), fill: false, rest: true, dur: NIGHT_MIN, dur0: NIGHT_MIN, overnight: true, kind: placeKind(pick),
+        sug: pick.name, sugKey: (li === 0 ? 'o:' : 'h:') + pick.name, slat: pick.lat == null ? null : pick.lat, slon: pick.lon == null ? null : pick.lon });
+    });
+    /* the group's leader may have booked somewhere else (their group page): the stop moves to that place */
+    const stays = groupStays(c.car);
+    L.stops.filter(x => x.overnight).forEach(x => {
+      const st = stays.find(y => stayKey(y, x) && hasPin(y));
+      if (!st) return;
+      if (x.slat != null && kmApart(x.slat, x.slon, +st.lat, +st.lon) < 3) { x.booked = +st.cost > 0 || !!st.note; return; }      // the suggested town: confirmed once a cost or booking note is in
+      const pr = project(alt, +st.lat, +st.lon);
+      Object.assign(x, { name: st.place, lat: +st.lat, lon: +st.lon, d: Math.max(1, Math.min(alt.km - 1, pr.d)), off: pr.off, chosen: true, roadside: false, cls: 1, kind: 'accommodation', fuel: false, ev: false, toilets: false });
+      x.at = T0.minAt(x.d);
+      /* off the route: there and back, by road about 1.3 times the straight line, at about 60 km/h (an estimate — no route is fetched) */
+      const det = 2 * num(pr.off) * DETOUR_ROAD;
+      if (det >= DETOUR_MIN_KM) { x.detKm = Math.round(det); x.detMin = Math.round(det / DETOUR_KMH * 60); x.dur += x.detMin; }
+    });
+    L.stops.sort((a, b) => a.at - b.at);
+    sum();
+    fuelLevels(c, li);
+  }
+
+  /* ---------- accommodation booked by the groups (their group pages) ---------- */
+  const DETOUR_ROAD = 1.3, DETOUR_KMH = 60, DETOUR_MIN_KM = 3;
+  /* add the detours to each car's distance, time at the wheel, fuel and cost (once per plan; the legs' own figures stay as routed) */
+  function addDetours(P) {
+    P.cars.forEach(c => {
+      const km = c.stopPlan ? c.stopPlan.legs.reduce((a, L) => a + L.stops.reduce((b, x) => b + (x.overnight && x.detKm ? x.detKm : 0), 0), 0) : 0, was = c.detKm || 0;
+      if (km === was) return;
+      const base = c.km - was, perKm = base > 0 ? (c.amount - (c.detAmt || 0)) / base : 0, amt = km * perKm, dAmt = amt - (c.detAmt || 0), dKm = km - was;
+      c.km += dKm; c.min += dKm / DETOUR_KMH * 60; c.amount += dAmt; c.cost += dAmt * c.price; c.detKm = km; c.detAmt = amt;
+      P.km += dKm; P.fuelCost += dAmt * c.price;
+    });
+  }
+  const kmApart = (la1, lo1, la2, lo2) => Math.hypot((lo2 - lo1) * Math.cos(la1 * Math.PI / 180) * 111.32, (la2 - la1) * 110.54);
+  const hasPin = y => y && y.place && y.lat != null && y.lat !== '' && y.lon != null && y.lon !== '' && Number.isFinite(+y.lat) && Number.isFinite(+y.lon);
+  const normPlace = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  /* does this stay answer that suggested stop? (older entries have no link, so the town's name is matched) */
+  const stayKey = (y, x) => (y.for ? y.for === x.sugKey : !!normPlace(y.place) && normPlace(y.place) === normPlace(x.sug));
+  function groupOf(car) {
+    const R = typeof Rego !== 'undefined' && Rego.peek ? Rego.peek() : null;
+    if (!R || !car || !car.regoCar) return null;
+    const rc = R.cars.find(x => x.id === car.regoCar);
+    return (rc && R.groups.find(x => x.id === rc.group)) || null;
+  }
+  const groupStays = car => { const g = groupOf(car); return (g && g.plan && g.plan.stay) || []; };
+  /* where a place sits along a route: km from the start to the nearest point of the road, and how far off the road it is */
+  function project(alt, la, lo) {
+    const c = alt.coords, kx = Math.cos(la * Math.PI / 180) * 111.32, ky = 110.54;
+    let cum = 0, best = { off: Infinity, d: 0 };
+    for (let i = 1; i < c.length; i++) {
+      const ax = (c[i - 1][1] - lo) * kx, ay = (c[i - 1][0] - la) * ky, dx = (c[i][1] - c[i - 1][1]) * kx, dy = (c[i][0] - c[i - 1][0]) * ky;
+      const L2 = dx * dx + dy * dy, seg = Math.sqrt(L2), t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0, off = Math.hypot(ax + t * dx, ay + t * dy);
+      if (off < best.off) best = { off, d: cum + t * seg };
+      cum += seg;
+    }
+    return { d: best.d * (alt.km / (cum || 1)), off: best.off };
+  }
+  const homeLeave = P => { const fs = P.between.r ? withBreaks(P.between.r.min) : 0, end = toMin(T().walkEndTime); return P.mode === 'shuffle' ? end + 30 + fs : end + 20; };
+  const dayOf = (base, m) => { if (!base || m == null || !Number.isFinite(m)) return ''; const d = new Date(base); d.setDate(d.getDate() + Math.floor(m / 1440)); return isoDate(d); };
+  /* one car's overnight stops (after schedule): the suggestion, where the group is actually staying, and which night */
+  function nightsOf(P, c) {
+    if (!c.stopPlan) return [];
+    const t = Store.state.trip, sd = parseDate(t.start), ed = parseDate(t.end) || sd, out = [];
+    c.stopPlan.legs.forEach((L, li) => {
+      if (li !== 0 && li !== c.legs.length - 1) return;
+      const from = li === 0 ? c.leaveAt : homeLeave(P);
+      let added = 0;
+      L.stops.forEach(s => {
+        if (s.overnight) out.push({ key: s.sugKey, sug: s.sug, slat: s.slat, slon: s.slon, name: s.name, lat: s.lat == null ? null : s.lat, lon: s.lon == null ? null : s.lon,
+          night: dayOf(li === 0 ? sd : ed, from == null ? null : from + s.at + added), chosen: !!s.chosen, booked: !!(s.chosen || s.booked), home: li !== 0 });
+        added += s.dur;
+      });
+    });
+    return out;
+  }
+  /* accommodation a group has entered that isn't one of the planned overnight stops (say, the night before at the
+     trailhead): listed in the timetable by its date and pinned on the maps */
+  function extraStays(P) {
+    const R = typeof Rego !== 'undefined' && Rego.peek ? Rego.peek() : null, out = [];
+    if (!R) return out;
+    const t = Store.state.trip, sd = parseDate(t.start), ed = parseDate(t.end) || sd;
+    R.groups.forEach(g => {
+      const cars = P.cars.filter(c => { const x = groupOf(c.car); return x && x.id === g.id; });
+      if (!cars.length) return;
+      const used = cars.flatMap(c => (c.stopPlan ? c.stopPlan.legs : []).flatMap(L => L.stops.filter(x => x.overnight)));
+      ((g.plan && g.plan.stay) || []).forEach(y => {
+        if (!y.place || used.some(x => stayKey(y, x))) return;
+        const nd = parseDate(y.night);
+        const ret = !!(nd && ed && sd && ed > sd && nd >= ed), base = ret ? ed : sd;
+        out.push({ group: g.name, place: y.place, night: y.night || '', lat: hasPin(y) ? +y.lat : null, lon: hasPin(y) ? +y.lon : null, ret,
+          m: nd && base ? Math.round((nd - base) / 86400000) * 1440 + 18 * 60 + 30 : null });
+      });
+    });
+    return out;
+  }
+  /* every accommodation pin for the maps: [{ group, place, night, lat, lon, chosen }] */
+  function stayPins() {
+    try {
+      const P = plan(); schedule(P);
+      const out = [], seen = new Set();
+      P.cars.forEach(c => { const g = groupOf(c.car); nightsOf(P, c).forEach(n => { const k = (g ? g.id : c.car.id) + '|' + n.key; if (n.lat == null || seen.has(k)) return; seen.add(k);
+        out.push({ group: g ? g.name : c.car.name, place: n.name, night: n.night, lat: n.lat, lon: n.lon, chosen: n.chosen, booked: n.booked }); }); });
+      extraStays(P).forEach(x => { if (x.lat != null) out.push({ group: x.group, place: x.place, night: x.night, lat: x.lat, lon: x.lon, chosen: true, booked: true }); });
+      return out;
+    } catch (e) { return []; }
+  }
+  /* the timetable as real dates and times, for the Dashboard: [{ t: Date, html }] */
+  function events() {
+    try {
+      const t = Store.state.trip, sd = parseDate(t.start), ed = parseDate(t.end) || sd;
+      if (!sd) return [];
+      const tt = timetable(plan()), at = (base, m) => { const d = new Date(base); d.setMinutes(Math.round(m)); return d; };
+      return [...tt.out.filter(x => Number.isFinite(x[0])).map(([m, html]) => ({ t: at(sd, m), html })), ...tt.ret.filter(x => Number.isFinite(x[0])).map(([m, html]) => ({ t: at(ed, m), html }))];
+    } catch (e) { return []; }
+  }
+
+  /* Fuel in the tank on arriving at each stop of a leg. Meal and overnight stops are added after the fuel plan, so
+     their level is worked out here from the stop before. */
+  function fuelLevels(c, li) {
+    const L = c.stopPlan && c.stopPlan.legs[li], l = c.legs[li];
+    if (!L || !l || !l.r || !l.r.alt || !l.r.alt.km) return;
+    const tank = c.stopPlan.tank, total = l.r.alt.km, perKm = (l.fuel ? l.fuel.amount : total * c.econ / 100) / total;
+    let level = L.fuelStart, d0 = 0;
+    L.stops.forEach(s => {
+      if (s.fuelBefore == null || !Number.isFinite(s.fuelBefore) || s.mealOnly || s.overnight) s.fuelBefore = level - (s.d - d0) * perKm;
+      level = s.fill ? tank : s.can ? Math.min(tank || Infinity, s.fuelBefore + s.can * CAN_L) : s.fuelBefore;
+      d0 = s.d;
+    });
+  }
+
+  /* Make each overnight stop a real night: arrive in the evening (about 6:30 pm) and leave in the morning (about 6:30 am),
+     staying at least 8 hours. On the way there the arrival time is fixed, so work back from it; on the way home the
+     departure is fixed, so work forward. */
+  function fitNights(c, li, anchor, arriving) {
+    const L = c.stopPlan && c.stopPlan.legs[li], l = c.legs[li];
+    if (!L || !l || !l.r) return;
+    const nights = L.stops.filter(x => x.overnight), tot = l.r.min, EVE = 18 * 60 + 30, MORN = 6 * 60 + 30;
+    if (!nights.length) return;
+    if (arriving) nights.slice().reverse().forEach(x => {
+      const leave = anchor - (tot - x.at) - L.stops.filter(q => q.at > x.at).reduce((a, q) => a + q.dur, 0);     // when the car must leave this town
+      const arrive = Math.floor((leave - 480 - EVE) / 1440) * 1440 + EVE;                                            // the latest 6:30 pm at least 8 h earlier
+      x.dur = Math.max(480, Math.min(900, leave - arrive)) + (x.detMin || 0);
+    });
+    else nights.forEach(x => {
+      const arrive = anchor + x.at + L.stops.filter(q => q.at < x.at).reduce((a, q) => a + q.dur, 0);
+      const morning = Math.ceil((arrive - MORN) / 1440) * 1440 + MORN;                                               // the next 6:30 am, or 8 hours' rest if that's later
+      x.dur = Math.max(480, Math.min(900, morning - arrive)) + (x.detMin || 0);
+    });
+    L.extra = L.stops.reduce((a, x) => a + x.dur, 0);
+  }
+
+  /* Meal stops on one leg of a car's drive (after planStops): on a drive over 4 hours, stop for breakfast, lunch and
+     dinner when their time falls during the drive. A rest or fuel stop near the meal time becomes the meal stop;
+     otherwise a stop is added at the best town near that time. `from` = the clock time (minutes) the leg starts. */
+  function planMeals(c, li, from) {
+    const L = c.stopPlan && c.stopPlan.legs[li], l = c.legs[li];
+    if (!L || !l || !l.r || !l.r.alt) return;
+    L.stops = L.stops.filter(x => !x.mealOnly);
+    L.stops.forEach(x => { if (x.meal) { x.dur = x.dur0; delete x.meal; delete x.mealIcon; } });
+    const sum = () => { L.extra = L.stops.reduce((a, x) => a + x.dur, 0); };
+    sum();
+    const alt = l.r.alt, tot = alt.min;
+    if (tot <= MEAL_OVER) return;
+    const T0 = clockOf(alt), cands = candidates(alt).filter(x => x.d > 3 && x.d < alt.km - 3);
+    /* driving minutes into the leg at which the clock reaches `t` (stops before it push it later) */
+    const driveMinAt = t => { let m = t - from; for (let i = 0; i < 4; i++) m = t - from - L.stops.filter(x => x.at < m).reduce((a, x) => a + x.dur, 0); return m; };
+    /* clock time a stop starts (stops before it push it later) */
+    const startOf = x => from + x.at + L.stops.filter(q => q.at < x.at).reduce((a, q) => a + q.dur, 0);
+    MEALS.forEach(([name, at, icon]) => {
+      for (let day = -2; day <= 3; day++) {
+        /* dinner and breakfast are eaten at an overnight stop when the car is there at that time */
+        if (L.stops.some(x => x.overnight && at + day * 1440 >= startOf(x) - 45 && at + day * 1440 <= startOf(x) + x.dur + 45)) continue;             // long drives can start the day before or run into the next day
+        const m = driveMinAt(at + day * 1440);
+        if (m < 45 || m > tot - 30) continue;                 // eaten before leaving, or after arriving
+        const near = L.stops.filter(x => !x.meal && !x.overnight && !x.roadside && Math.abs(x.at - m) <= MEAL_SLACK).sort((a, b) => (b.cls - a.cls) * 3 + Math.abs(a.at - m) / 10 - Math.abs(b.at - m) / 10)[0];
+        if (near && near.cls >= 0) { near.dur0 = near.dur; near.meal = name; near.mealIcon = icon; near.dur = MEAL_MIN + (near.fill ? 5 : 0); }
+        else {
+          const opts = cands.filter(x => Math.abs(T0.minAt(x.d) - m) <= MEAL_SLACK && !L.stops.some(q => Math.abs(q.d - x.d) < 2));
+          const best = (opts.filter(x => x.cls >= 1).length ? opts.filter(x => x.cls >= 1) : opts).sort((a, b) => (b.cls * 3 + (b.toilets ? 1 : 0) - Math.abs(T0.minAt(b.d) - m) / 10) - (a.cls * 3 + (a.toilets ? 1 : 0) - Math.abs(T0.minAt(a.d) - m) / 10))[0];
+          const pick = best || { name: 'a safe spot by the road', cls: -2, d: T0.kmAt(m), off: 0, fuel: false, ev: false, roadside: true };
+          L.stops.push({ ...pick, at: T0.minAt(pick.d), fill: false, rest: true, dur: MEAL_MIN, dur0: MEAL_MIN, meal: name, mealIcon: icon, mealOnly: true, kind: placeKind(pick) });
+          L.stops.sort((a, b) => a.at - b.at);
+        }
+        sum();
+      }
+    });
+    fuelLevels(c, li);
   }
 
   /* ---------- rest & fuel stops ----------
@@ -420,6 +694,7 @@ const Travel = (() => {
   function planStops(c) {
     const car = c.car, tank = num(car.tank), ev = car.fuel === 'ev';
     let fuel = tank;                                              // every car starts with a full tank
+    let poured = 0, cans = 0;                                     // litres poured from jerry cans since the last service station; cans to carry
     const warn = [];
     const legs = c.legs.map(l => {
       const out = { stops: [], extra: 0, fuelStart: fuel, fuelEnd: null };
@@ -445,7 +720,24 @@ const Travel = (() => {
           const opts = cands.filter(x => x.d > pos + 1 && x.d <= limKm && canFuel(x));
           pick = opts.sort((a, b) => (b.cls * 3 + b.d / limKm * 4) - (a.cls * 3 + a.d / limKm * 4))[0] || null;
           why = 'fuel';
-          if (!pick) { warn.push(`${esc(car.name)}: no ${ev ? 'charger' : 'fuel'} found before the ${ev ? 'battery' : 'tank'} gets low on ${esc(l.label.toLowerCase())} — fill up beforehand${ev ? '' : ' or carry a jerry can'}.`); break; }
+          if (!pick && ev) { warn.push(`${esc(car.name)}: no charger found before the battery gets low on ${esc(l.label.toLowerCase())} — charge fully beforehand.`); break; }
+          if (!pick) {
+            /* nowhere to buy fuel before the tank gets low: carry it in 25 L jerry cans. Cans are always emptied whole — nobody
+               measures part of a can by the roadside — so the stop is where the tank has room for a full can. */
+            const next = cands.filter(x => x.d > limKm && canFuel(x)).sort((a, b) => a.d - b.d)[0];
+            const roomAt = d => tank - (fuel - (d - pos) * perKm);
+            const spot = cands.filter(x => x.d > pos + 1 && x.d <= limKm && x.d > limKm - 60 && roomAt(x.d) >= CAN_L).sort((a, b) => b.cls - a.cls || b.d - a.d)[0]
+              || { name: 'a safe spot well off the road', cls: -2, d: Math.max(pos + 1, limKm - 2), off: 0, fuel: false, ev: false, roadside: true };
+            fuel -= (spot.d - pos) * perKm;
+            const needL = ((next ? next.d : total) - spot.d) * perKm - (fuel - reserve);          // to reach the next fuel (or the end) with the reserve intact
+            const fits = Math.floor((tank - fuel) / CAN_L);                                          // whole cans the tank can take here
+            if (fits < 1) { warn.push(`${esc(car.name)}: the ${tank} L tank is too small to empty a ${CAN_L} L jerry can into on ${esc(l.label.toLowerCase())}, and there is no fuel for sale in range — use a car with a bigger tank or a different route.`); break; }
+            const litres = Math.max(1, Math.min(Math.ceil(needL / CAN_L), fits)) * CAN_L;
+            out.stops.push({ ...spot, at: T0.minAt(spot.d), fill: false, rest: true, dur: BOTH_MIN, can: litres / CAN_L, fuelBefore: fuel, kind: placeKind(spot) });
+            fuel += litres; poured += litres; cans = Math.max(cans, Math.ceil(poured / CAN_L));
+            pos = spot.d; last = T0.minAt(spot.d); out.extra += BOTH_MIN;
+            continue;
+          }
         } else if (restDue) {
           const target = last + BREAK_EVERY;
           const inWin = (lo, hi) => cands.filter(x => x.d > pos + 1 && x.d <= limKm + (fuelNeeded ? 0 : 1e9) && T0.minAt(x.d) >= lo && T0.minAt(x.d) <= hi);
@@ -468,7 +760,7 @@ const Travel = (() => {
         const rest = why === 'rest' || T0.minAt(pick.d) - last > 60;
         const dur = fill && rest ? BOTH_MIN : fill ? FUEL_MIN : BREAK_MIN;
         out.stops.push({ ...pick, at: T0.minAt(pick.d), fill, rest, dur, fuelBefore: fuel, kind: placeKind(pick) });
-        if (fill) fuel = tank;
+        if (fill) { fuel = tank; poured = 0; }                      // the cans are refilled at a service station too
         pos = pick.d; last = T0.minAt(pick.d);
         out.extra += dur;
       }
@@ -486,8 +778,42 @@ const Travel = (() => {
       if (tank && fuel < 0) warn.push(`${esc(car.name)} runs out of fuel on ${esc(l.label.toLowerCase())} — check the tank size and economy.`);
       return out;
     });
-    c.stopPlan = { legs, warn, tank, unit: c.unit };
+    c.stopPlan = { legs, warn, tank, unit: c.unit, cans };
     return c.stopPlan;
+  }
+
+  /* A car's load once the stop plan (jerry cans) is known */
+  function loadFacts(c) {
+    const L = c.load || loadOf(c.car, 1, 1), cans = c.stopPlan ? c.stopPlan.cans || 0 : 0, total = L.inCar + cans * CAN_KG;
+    const all = num(c.car.mass, MASS) + cans * CAN_KG + L.trailer;        // "loaded kg" already counts the car, people and gear
+    return { cans, total, payload: L.payload, over: total - L.payload, gcmOver: L.gcm ? all - L.gcm : 0 };
+  }
+  function loadRow(c) {
+    const car = c.car, L = c.load, F = loadFacts(c), n = (k, v, ph, w = 'w-md') => `<input type="number" min="0" step="10" class="${w}" data-car="${car.id}" data-k="${k}" value="${v || ''}" placeholder="${ph}">`;
+    return `<tr class="car-load" data-id="${car.id}"><td colspan="20"><small>
+      <b class="${F.over > 0 ? 'bad-text' : ''}">⚖️ Load ${F.total} of ${n('payload', num(car.payload), PAYLOAD)} kg payload${F.over > 0 ? ` — ${Math.round(F.over)} kg OVER` : ''}</b>:
+      ${L.n} ${L.known ? 'registered ' : ''}people ${L.people} kg${L.known ? ` (${L.adults} adult${L.adults === 1 ? '' : 's'}, ${L.youth} youth; ${L.bodyN === L.n ? 'their own weights' : L.bodyN ? `${L.bodyN} own weight${L.bodyN === 1 ? '' : 's'}, ${L.n - L.bodyN} est.` : 'est. — no body weights entered'})` : ' (est.)'} + packs ${L.packs} kg${L.known ? ` (${L.packN === L.n ? 'from the pack weights' : L.packN ? `${L.packN} from the pack weights, ${L.n - L.packN} est.` : 'est.'})` : ''} + other gear ${n('gearKg', num(car.gearKg), '0', 'w-sm')} kg${F.cans ? ` + ${F.cans} jerry can${F.cans > 1 ? 's' : ''} ${F.cans * CAN_KG} kg` : ''}${L.ball ? ` + tow ball ${L.ball} kg` : ''}
+      · 🚚 Trailer ${n('trailerKg', num(car.trailerKg), 'none')} kg loaded <span class="${L.trailer > L.tow ? 'bad-text' : ''}">of ${n('towMax', num(car.towMax), TOW)} kg towing capacity</span>
+      · Combined limit (GCM) ${n('gcm', num(car.gcm), 'optional')} kg${F.gcmOver > 0 ? ` <b class="bad-text">${Math.round(F.gcmOver)} kg over</b>` : ''}
+      · fuel use <b>+${L.pct.toFixed(0)}%</b> for this load${L.trailer ? ' and trailer' : ''}</small></td></tr>`;
+  }
+  /* Keep the risk assessment in step with the travel plan: carrying fuel, and towing */
+  function autoRisks(P) {
+    if (!Store.canEdit) return;
+    const R = Store.state.risks, cans = P.cars.map(c => [c, loadFacts(c).cans]).filter(x => x[1]), tow = P.cars.filter(c => c.load && c.load.trailer);
+    const want = [
+      ['jerry', cans.length, { hazard: 'Carrying fuel in jerry cans', cause: `No fuel for sale on part of the drive: ${cans.map(([c, n]) => `${c.car.name} carries ${n} × ${CAN_L} L`).join('; ')}. Fire, fumes or a spill in a crash or while refuelling by the road.`, location: 'Travel', l: 2, c: 4,
+        controls: 'Approved, labelled metal or plastic fuel cans in good condition, filled to the line. Carried outside the cabin (roof rack, tray or trailer), upright and tied down; never inside with passengers. Refuel from the cans only at the planned stops, which are where the tank has room for a full can: empty each can completely, never measure out part of a can by the roadside. Engine off, well off the road, no flames or smoking, everyone else out of the car. Use a funnel or spout; wipe up spills. Fire extinguisher in every car carrying fuel. Cans counted in the car\'s payload.', rl: 1, rc: 4, owner: 'Drivers' }],
+      ['trailer', tow.length, { hazard: 'Towing a trailer', cause: `${tow.map(c => `${c.car.name} tows ${c.load.trailer} kg`).join('; ')}. Sway, longer braking, a detached or overloaded trailer.`, location: 'Travel', l: 2, c: 4,
+        controls: 'Trailer weight within the car\'s towing capacity and tow-ball limit; load balanced with the heavy items low and over the axle. Check coupling, safety chains, lights, tyres and wheel nuts before leaving and at each stop. Driver experienced with towing; lower speed, longer following distance. Combined weight within the car\'s GCM.', rl: 1, rc: 4, owner: 'Drivers' }]
+    ];
+    let changed = [];
+    want.forEach(([key, on, r]) => {
+      const cur = R.find(x => x.auto === key);
+      if (on && !cur) { R.push({ id: uid(), auto: key, ...r }); changed.push(r.hazard); }
+      else if (on && cur && (cur.cause !== r.cause || (key === 'jerry' && !/empty each can completely/.test(cur.controls || '')))) { cur.cause = r.cause; if (key === 'jerry' && !/empty each can completely/.test(cur.controls || '')) cur.controls = r.controls; Store.save(); }
+    });
+    if (changed.length) { Store.save(); toast(`Added to the risk assessment: ${changed.join(', ')}`, 6000); }
   }
 
   /* Do any cars need stops (long drives or more than a tank)? */
@@ -507,9 +833,10 @@ const Travel = (() => {
       const sp = c.stopPlan && c.stopPlan.legs[i];
       if (!sp) return;
       let added = 0;
-      sp.stops.forEach(s => { list.push([from + s.at + added, `${stopIcon(s)} <b>${esc(c.car.name)}</b> — ${stopWhat(s)} at <b>${esc(s.name)}</b> <small class="muted">(km ${Math.round(s.d)}, ${s.dur} min)</small>`]); added += s.dur; });
+      sp.stops.forEach(s => { list.push([from + s.at + added, `${stopIcon(s)} <b>${esc(c.car.name)}</b> — ${stopWhat(s)} at <b>${esc(s.name)}</b>${stopNote(s)} <small class="muted">(km ${Math.round(s.d)}, ${s.overnight ? fmtMins(s.dur) : s.dur + ' min'})</small>`]); added += s.dur; });
     };
     P.cars.forEach(c => stopLines(c, 0, c.leaveAt, out));
+    extraStays(P).forEach(x => { if (x.m != null) (x.ret ? ret : out).push([x.m, `🏨 <b>${esc(x.group)}</b> — staying the night at <b>${esc(x.place)}</b> <small class="muted">(booked by the group${x.lat == null ? ' — not pinned on the map yet' : ''})</small>`]); });
     const fs = P.between.r ? withBreaks(P.between.r.min) : 0;
     const together = P.cars.length > 1 ? ' — all cars together' : '';
     let walkStart;
@@ -551,7 +878,13 @@ const Travel = (() => {
   /* ---------- render ---------- */
   function render() {
     if (!bound) bind();
-    const tr = T(), P = plan(), people = Store.state.people;
+    const tr = T();
+    if (typeof Rego !== 'undefined' && Rego.peek && !Rego.peek() && Store.tripId && regoAsked !== Store.tripId && tr.cars.some(c => c.regoCar)) {
+      regoAsked = Store.tripId;
+      Rego.data().then(d => { if (d && App.current === 'travel') render(); else if (d && Rego.syncTravel) Rego.syncTravel(); }).catch(() => {});
+    }
+    if (typeof Rego !== 'undefined' && Rego.syncTravel) setTimeout(Rego.syncTravel, 0);        // the groups' pages get the travel plan as it is now
+    const P = plan(), people = Store.state.people;
     const opts = pointOptions();
     const s = Store.state.trip, startDate = parseDate(s.start), endDate = parseDate(s.end);
     const km = l => l.r ? `${l.r.km.toFixed(l.r.km < 10 ? 1 : 0)} km${l.r.est ? '*' : ''}` : (valid(l.a) && valid(l.b) ? '…' : '—');
@@ -598,7 +931,7 @@ const Travel = (() => {
         ${tr.cars.length ? `<div class="table-scroll"><table class="tbl cars">
           <thead><tr><th>Car</th><th>Driver</th><th class="num">Seats</th><th>Fuel</th><th class="num">Economy</th><th class="num">Load +%</th><th class="num">Tank</th><th class="num" title="Car, people and gear — used for the hill allowance">Loaded kg</th><th>Leaves from</th>
             ${P.mode === 'shuffle' ? '<th>During the walk</th>' : ''}<th class="num">Driving</th><th class="num">Fuel</th><th class="num">Cost</th><th class="no-print"></th></tr></thead>
-          <tbody>${(schedule(P), P.cars.map(c => carRow(c, P, people)).join(''))}</tbody>
+          <tbody>${(schedule(P), autoRisks(P), P.cars.map(c => carRow(c, P, people) + loadRow(c)).join(''))}</tbody>
           <tfoot><tr><th colspan="${P.mode === 'shuffle' ? 10 : 9}">Total</th><th class="num">${Math.round(P.km)} km</th><th></th><th class="num">${fmtMoney(P.fuelCost)}</th><th class="no-print"></th></tr></tfoot>
         </table></div>` : '<p class="muted">No cars yet.</p>'}
         <button class="btn no-print" id="addCar">+ Add car</button>
@@ -680,7 +1013,7 @@ const Travel = (() => {
       if (!l || !l.r) return [];
       const lines = [];
       let added = 0;
-      (L ? L.stops : []).forEach(s => { lines.push([from + s.at + added, `${stopIcon(s)} ${stopWhat(s)} at <b>${esc(s.name)}</b> <small class="muted">(km ${Math.round(s.d)} · ${s.dur} min${s.toilets ? ' · toilets' : ''})</small>`]); added += s.dur; });
+      (L ? L.stops : []).forEach(s => { lines.push([from + s.at + added, `${stopIcon(s)} ${stopWhat(s)} at <b>${esc(s.name)}</b>${stopNote(s)} <small class="muted">(km ${Math.round(s.d)} · ${s.overnight ? fmtMins(s.dur) : s.dur + ' min'}${s.toilets ? ' · toilets' : ''})</small>`]); added += s.dur; });
       lines.push([from + l.r.min + added, toText]);
       return lines;
     };
@@ -697,7 +1030,7 @@ const Travel = (() => {
         <tr><th>Driver</th><td>${car.driver ? esc(personName(car.driver)) : '—'} · ${num(car.seats, 5)} seats</td></tr>
         <tr><th>Car</th><td>${esc(f.label)} · ${c.econ.toFixed(1)} ${c.unit}/100 km${num(car.tank) ? ` · ${num(car.tank)} ${c.unit} tank` : ''} · ${num(car.mass, MASS)} kg loaded</td></tr>
         <tr><th>Leaves from</th><td>${esc(c.home?.name || 'home')}${P.mode === 'shuffle' ? ` · during the walk this car <b>${c.role === 'finish' ? 'is left at the finish' : 'waits at the start'}</b>` : ''}</td></tr>
-        <tr><th>Driving</th><td><b>${Math.round(c.km)} km</b> · ${fmtMins(c.min)} at the wheel · ${c.amount.toFixed(1)} ${c.unit} (${fmtMoney(c.cost)}) ${c.flat ? `<small class="muted">${hillNote(c)}</small>` : ''}</td></tr>
+        <tr><th>Driving</th><td><b>${Math.round(c.km)} km</b> · ${fmtMins(c.min)} at the wheel · ${c.amount.toFixed(1)} ${c.unit} (${fmtMoney(c.cost)}) ${c.detKm ? `<small class="muted">incl. about ${c.detKm} km to and from the group's accommodation off the route (approx.)</small> ` : ''}${c.flat ? `<small class="muted">${hillNote(c)}</small>` : ''}</td></tr>
       </table>
       <div class="rpt-cols">
         <div><h3>Getting there — ${sd ? fmtDate(sd) : 'day 1'}</h3>${list(day1)}</div>
@@ -715,8 +1048,9 @@ const Travel = (() => {
       ${c.legs.filter(l => l.r && l.r.alt && l.r.km).map(l => `<div class="rpt-dir">${legDirections(l, true)}</div>`).join('')}`;
   }
 
-  const stopIcon = s => (s.fill && s.rest ? '☕⛽' : s.fill ? '⛽' : '☕');
-  const stopWhat = s => (s.fill && s.rest ? 'rest &amp; refuel' : s.topUp ? 'top up before the trailhead' : s.fill ? 'refuel' : 'rest stop');
+  const stopNote = s => (!s.overnight ? '' : s.chosen ? ` <small class="muted">— the group's choice${s.sug ? ` (suggested: ${esc(s.sug)})` : ''}${s.off > 5 ? `, about ${Math.round(s.off)} km off the route` : ''}${s.detKm ? ` — allow about <b>${s.detKm} km and ${fmtMins(s.detMin)}</b> more driving there and back (approx., counted in the times, distance and fuel)` : ''}</small>` : s.booked ? ' <small class="muted">— confirmed by the group</small>' : ' <small class="muted">— suggested, the group has not confirmed it</small>');
+  const stopIcon = s => (s.can ? '🛢️' : s.overnight ? (s.chosen || s.booked ? '🏨' : '🛏️') : s.meal ? s.mealIcon + (s.fill ? '⛽' : '') : s.fill && s.rest ? '☕⛽' : s.fill ? '⛽' : '☕');
+  const stopWhat = s => (s.can ? `<b>empty ${s.can === 1 ? 'a whole jerry can' : s.can + ' whole jerry cans'} into the tank</b> (${s.can} × ${CAN_L} L)` : s.overnight ? '<b>overnight stop</b> (dinner, sleep, breakfast)' : s.meal ? `<b>${s.meal}</b>${s.fill ? ' &amp; refuel' : ''}` : s.fill && s.rest ? 'rest &amp; refuel' : s.topUp ? 'top up before the trailhead' : s.fill ? 'refuel' : 'rest stop');
 
   /* ---------- rest & fuel stops card ---------- */
   function stopsCard(P) {
@@ -730,9 +1064,9 @@ const Travel = (() => {
         const L = sp.legs[i];
         if (!l.r || !L) return;
         const pct = v => sp.tank ? `${Math.max(0, v).toFixed(0)} ${sp.unit} <small class="muted">(${Math.max(0, v / sp.tank * 100).toFixed(0)}%)</small>` : '—';
-        rows.push(`<tr class="sub"><td colspan="5"><b>${esc(c.car.name)}</b> — ${esc(l.label)} <small class="muted">${l.r.km.toFixed(0)} km · ${fmtMins(l.r.min)} driving${L.stops.length ? ` + ${L.extra} min stopped` : ''} · starts with ${pct(L.fuelStart)}</small></td></tr>`);
-        L.stops.forEach(s => rows.push(`<tr><td>${stopIcon(s)} ${stopWhat(s)}</td><td><b>${esc(s.name)}</b> <small class="muted">${s.roadside ? 'no town nearby — pull over somewhere safe' : `${s.kind}${s.off > 0.8 ? `, ${s.off.toFixed(1)} km off the road` : ''}${s.toilets ? ' · toilets' : ''}`}</small></td>
-          <td class="num">km ${Math.round(s.d)}</td><td class="num">${fmtMins(s.at)} in</td><td class="num">${s.fill ? `${pct(s.fuelBefore)} → full` : pct(s.fuelBefore)}</td></tr>`));
+        rows.push(`<tr class="sub"><td colspan="5"><b>${esc(c.car.name)}</b> — ${esc(l.label)} <small class="muted">${l.r.km.toFixed(0)} km · ${fmtMins(l.r.min)} driving${L.stops.length ? ` + ${fmtMins(L.extra)} stopped` : ''} · starts with ${pct(L.fuelStart)}</small></td></tr>`);
+        L.stops.forEach(s => rows.push(`<tr><td>${stopIcon(s)} ${stopWhat(s)}</td><td><b>${esc(s.name)}</b>${stopNote(s)} <small class="muted">${s.roadside ? 'no town nearby — pull over somewhere safe' : `${s.kind}${s.off > 0.8 ? `, ${s.off.toFixed(1)} km off the road` : ''}${s.toilets ? ' · toilets' : ''}`}</small></td>
+          <td class="num">km ${Math.round(s.d)}</td><td class="num">${fmtMins(s.at)} in</td><td class="num">${s.fill ? `${pct(s.fuelBefore)} → full` : s.can ? `${pct(s.fuelBefore)} + ${s.can} whole can${s.can > 1 ? 's' : ''} (${s.can * CAN_L} L)` : pct(s.fuelBefore)}</td></tr>`));
         if (!L.stops.length) rows.push(`<tr><td colspan="5" class="muted small">No stops needed${l.r.min > BREAK_OVER ? '' : ` (under ${BREAK_OVER / 60} hours)`}.</td></tr>`);
         rows.push(`<tr><td colspan="4" class="muted small">Arrive with</td><td class="num small">${pct(L.fuelEnd)}</td></tr>`);
       });
@@ -746,7 +1080,7 @@ const Travel = (() => {
       <div class="table-scroll"><table class="tbl compact trv-stops"><thead><tr><th>Stop</th><th>Where</th><th class="num">Along the road</th><th class="num">Driving</th><th class="num">Fuel</th></tr></thead>
         <tbody>${rows.join('')}</tbody></table></div>
       <p class="small muted">Every car starts with a full tank. Drives over ${BREAK_OVER / 60} hours stop every ${BREAK_EVERY / 60} hours (± ${BREAK_SLACK} min, to stop in a town), and cars refuel before ${RESERVE * 100}% is left — combined with a rest stop where possible.
-        Towns are preferred, then service stations and roadhouses, then rest areas. Rest ${BREAK_MIN} min, fuel ${FUEL_MIN} min, both ${BOTH_MIN} min. Town, fuel and rest-area data © OpenStreetMap contributors — check opening hours on long country runs, especially at night.</p>
+        Towns are preferred, then service stations and roadhouses, then rest areas. Rest ${BREAK_MIN} min, fuel ${FUEL_MIN} min, both ${BOTH_MIN} min. Drives over ${MEAL_OVER / 60} hours also stop ${MEAL_MIN} min for <b>breakfast (about 7:30 am), lunch (12:30 pm) and dinner (6:30 pm)</b> when those times fall during the drive: a rest or fuel stop near the meal time becomes the meal stop, otherwise one is added at the nearest town. When the travel takes over ${NIGHT_OVER / 60} hours the car <b>stops overnight</b> (${NIGHT_MIN / 60} hours) in the best town near the halfway point, so no day has much more than ${DAY_DRIVE / 60} hours of driving; the town is filled in on the group's page for its leader to book and add the cost; if they choose somewhere else, that place replaces the stop here (🏨) and is pinned on the map. Town, fuel and rest-area data © OpenStreetMap contributors — check opening hours on long country runs, especially at night.</p>
     </div>`;
   }
 
@@ -904,6 +1238,8 @@ const Travel = (() => {
       if (s.lat != null) L2.marker([s.lat, s.lon], { icon: L2.divIcon({ className: 'trv-icon trv-stop', html: stopIcon(s), iconSize: [30, 22], iconAnchor: [15, 11] }) })
         .bindTooltip(`${esc(c.car.name)}: ${stopWhat(s)} at ${esc(s.name)} (km ${Math.round(s.d)})`).addTo(map);
     })));
+    extraStays(P).forEach(x => { if (x.lat != null) L2.marker([x.lat, x.lon], { icon: L2.divIcon({ className: 'trv-icon trv-stop', html: '🏨', iconSize: [30, 22], iconAnchor: [15, 11] }) })
+      .bindTooltip(`${esc(x.group)}: staying at ${esc(x.place)}${x.night ? ' — night of ' + fmtDate(parseDate(x.night)) : ''}`).addTo(map); });
     mark(P.S, '🟢', 'Walk start: ' + (P.S?.name || ''));
     if (P.through) mark(P.F, '🏁', 'Walk finish: ' + (P.F?.name || ''));
     if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [20, 20], maxZoom: 13 });
@@ -962,7 +1298,7 @@ const Travel = (() => {
       } else if (el.dataset.car) {
         const car = tr.cars.find(c => c.id === el.dataset.car), k = el.dataset.k;
         if (k === 'fuel' && num(car.economy) === (FUEL_TYPES[car.fuel] || {}).economy) car.economy = FUEL_TYPES[el.value].economy;
-        car[k] = ['seats', 'economy', 'extraPct', 'tank', 'mass'].includes(k) ? num(el.value) : el.value;
+        car[k] = ['seats', 'economy', 'extraPct', 'tank', 'mass', 'payload', 'gearKg', 'trailerKg', 'towMax', 'gcm'].includes(k) ? num(el.value) : el.value;
       } else return;
       Store.save();
       render();
@@ -1003,5 +1339,17 @@ const Travel = (() => {
     };
   }
 
-  return { render, plan, costs, ensure, timetable, schedule, stopsCard, loadStops, planStops, carPlan, needsStops, stopsReady: () => !!stopsData, timeList, shuffleCard, drivenLegs, legDirections, routesCard, MODES, OPTIMISE };
+  /* for the People tab: each registered car's cost, time and overnight towns (null until its route is known) */
+  function carFacts() {
+    try {
+      const P = plan(); schedule(P);
+      return P.cars.filter(c => c.car.regoCar).map(c => ({ regoCar: c.car.regoCar, complete: !!c.complete, cost: c.complete ? c.cost : null, km: c.complete ? c.km : null,
+        outMin: c.legs[0] && c.legs[0].r ? c.legs[0].r.min + legStopMin(c, 0) : null, driveMin: c.legs[0] && c.legs[0].r ? c.legs[0].r.min : null,
+        nights: c.stopPlan ? [...new Set(c.stopPlan.legs.flatMap(L => L.stops.filter(x => x.overnight).map(x => x.name)))] : [], stops: nightsOf(P, c),
+        meals: c.stopPlan ? c.stopPlan.legs[0].stops.filter(x => x.meal).map(x => `${x.meal} at ${x.name}`) : [],
+        cans: c.stopPlan ? c.stopPlan.cans || 0 : 0, load: loadFacts(c).total, payload: c.load ? c.load.payload : null, over: Math.max(0, Math.round(loadFacts(c).over)) }));
+    } catch (e) { return []; }
+  }
+
+  return { stayPins, events, loadFacts, carFacts, render, plan, costs, ensure, timetable, schedule, stopsCard, loadStops, planStops, carPlan, needsStops, stopsReady: () => !!stopsData, timeList, shuffleCard, drivenLegs, legDirections, routesCard, MODES, OPTIMISE };
 })();

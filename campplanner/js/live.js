@@ -12,7 +12,7 @@ const Live = (() => {
   const el = () => $('#livePanel');
   const allowed = () => !!(Store.tripId && Store.access && Store.access.canEdit);
   const ago = t => { const m = Math.max(0, (Date.now() / 1000 - t) / 60); return m < 1 ? 'just now' : m < 60 ? `${Math.round(m)} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
-  const STATUS = { ok: ['✅', 'OK — on the move'], stopped: ['⏸️', 'Stopped'], problem: ['🛠️', 'Sorting out a minor problem'], contact: ['📞', 'Trying to contact home base'] };
+  const STATUS = { ok: ['✅', 'OK — on the move'], stopped: ['⏸️', 'Stopped'], problem: ['🛠️', 'Sorting out a minor problem'], contact: ['📞', 'Trying to contact home base'], alert: ['🚨', 'ALERT — needs help'] };
   const statusText = d => (d.status && STATUS[d.status] ? STATUS[d.status][1] + (d.status === 'stopped' && d.note ? ` — for ${d.note}` : '') : '');
   const goUrl = code => location.origin + location.pathname.replace(/[^/]*$/, '') + 'go.html' + (code ? '?code=' + code : '');
 
@@ -138,6 +138,7 @@ const Live = (() => {
       if (showing && map) draw(map);
       announce();
       refreshDevs();
+      if (typeof Dash !== 'undefined') Dash.onLive(lastLive);
       const up = $('#liveUpdated'); if (up) up.textContent = 'updated ' + new Date().toLocaleTimeString();
     } catch (e) { /* try again next time */ }
     busy = false;
@@ -308,5 +309,5 @@ const Live = (() => {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   }
 
-  return { init, render, buildPack };
+  return { init, render, buildPack, data: () => lastLive, joinCode: () => (status && status.joinCode) || null, statusText, STATUS, motionOf, motionText };
 })();

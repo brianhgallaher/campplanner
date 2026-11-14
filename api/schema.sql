@@ -143,3 +143,81 @@ CREATE TABLE IF NOT EXISTS camp_trackers (
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY ix_tracker_trip (trip_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------- Camp Planner: registrations, groups, cars and check-in (api/rego.php) ----------
+-- camp_trips also has: reg_status ENUM('off','interest','open','closed'), reg_token, reg_closes DATE, reg_info TEXT (JSON shown on
+-- the registration page: gear requirements, meals, notes), checkin_token (the check-in phone app's link).
+-- Everything below is deleted 30 days after the trip ends. Medical details are never stored: only a yes/no flag.
+ALTER TABLE camp_trips
+    ADD COLUMN reg_status    ENUM('off','interest','open','closed') NOT NULL DEFAULT 'off',   -- interest = expressions of interest, open = full registration
+    ADD COLUMN reg_token     VARCHAR(32) NULL,
+    ADD COLUMN reg_closes    DATE NULL,
+    ADD COLUMN reg_info      TEXT NULL,
+    ADD COLUMN checkin_token VARCHAR(32) NULL,
+    ADD UNIQUE KEY uq_camp_reg (reg_token),
+    ADD UNIQUE KEY uq_camp_checkin (checkin_token);
+
+CREATE TABLE IF NOT EXISTS camp_reg_groups (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    trip_id     INT UNSIGNED NOT NULL,
+    name        VARCHAR(60) NOT NULL,
+    token       VARCHAR(32) NOT NULL,                       -- the group leader's link
+    leader_id   INT UNSIGNED NULL,                          -- a row in camp_reg_people
+    note        VARCHAR(300) NOT NULL DEFAULT '',
+    plan        TEXT NULL,                                  -- JSON: the group's meals per day, overnight accommodation and public transport, with costs
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_reg_group_token (token),
+    KEY ix_reg_group_trip (trip_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS camp_reg_cars (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    trip_id     INT UNSIGNED NOT NULL,
+    group_id    INT UNSIGNED NOT NULL,
+    code        VARCHAR(12) NOT NULL,                       -- in the QR code on the car's cover page
+    label       VARCHAR(60) NOT NULL DEFAULT '',
+    driver      VARCHAR(80) NOT NULL DEFAULT '',
+    seats       TINYINT UNSIGNED NOT NULL DEFAULT 5,
+    start_name  VARCHAR(120) NOT NULL DEFAULT '',           -- where the car leaves from (goes into the travel plan)
+    start_lat   DECIMAL(8,5) NULL,
+    start_lon   DECIMAL(8,5) NULL,
+    spec        TEXT NULL,                                  -- JSON vehicle details (model, fuel, economy, tank, payload, rego, insured tick, trailer)
+    arrived_at  DATETIME NULL,                              -- checked in at the start
+    arrived_by  VARCHAR(40) NOT NULL DEFAULT '',
+    gear_ok     TINYINT(1) NULL,                            -- "all listed gear is packed and here" confirmed at check-in
+    UNIQUE KEY uq_reg_car_code (code),
+    KEY ix_reg_car_trip (trip_id),
+    KEY ix_reg_car_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS camp_reg_people (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    trip_id     INT UNSIGNED NOT NULL,
+    group_id    INT UNSIGNED NULL,
+    car_id      INT UNSIGNED NULL,
+    code        VARCHAR(12) NOT NULL,                       -- in the QR code on the participant's card
+    token       VARCHAR(32) NOT NULL,                       -- their own link (see / change their registration)
+    name        VARCHAR(80) NOT NULL,
+    kind        ENUM('youth','adult') NOT NULL DEFAULT 'youth',
+    mobile      VARCHAR(30) NOT NULL DEFAULT '',
+    em_name     VARCHAR(80) NOT NULL DEFAULT '',            -- emergency contact
+    em_phone    VARCHAR(30) NOT NULL DEFAULT '',
+    dietary     VARCHAR(200) NOT NULL DEFAULT '',
+    med_flag    TINYINT(1) NOT NULL DEFAULT 0,              -- "has medical notes: see the leader's paper form" (no details stored)
+    consent     TINYINT(1) NOT NULL DEFAULT 0,
+    consent_by  VARCHAR(80) NOT NULL DEFAULT '',
+    consent_at  DATETIME NULL,
+    gear        TEXT NULL,                                  -- JSON: { ids: [ticked requirement ids], note }
+    status      ENUM('registered','cancelled') NOT NULL DEFAULT 'registered',
+    attend      ENUM('expected','present','noshow') NOT NULL DEFAULT 'expected',
+    attend_at   DATETIME NULL,
+    wait_trip   TINYINT(1) NOT NULL DEFAULT 0,              -- on the trip's waiting list (the trip was full when they registered)
+    wait_group  TINYINT(1) NOT NULL DEFAULT 0,              -- no seat in their group's cars yet
+    brief_at    DATETIME NULL,                              -- when they confirmed they had read the briefing
+    feedback    VARCHAR(500) NOT NULL DEFAULT '',           -- their question or comment on the briefing
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_reg_person_code (code),
+    UNIQUE KEY uq_reg_person_token (token),
+    KEY ix_reg_person_trip (trip_id),
+    KEY ix_reg_person_group (group_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

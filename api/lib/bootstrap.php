@@ -274,6 +274,34 @@ function audit(array $user, string $action, string $entity, ?int $id, $detail = 
     $stmt->execute([$user['username'], $action, $entity, $id, $detail === null ? null : json_encode($detail, JSON_UNESCAPED_UNICODE)]);
 }
 
+// ---------- Camp Planner registrations: deleted 30 days after the trip ----------
+
+const REG_KEEP_DAYS = 30;       // after the trip ends
+
+// Delete registrations of trips that ended more than 30 days ago. Safe to run on every request (one small query when
+// there is nothing to delete). $everySecs > 0: at most once in that time on this server (api/camp.php uses it).
+function reg_purge(int $everySecs = 0): void
+{
+    if ($everySecs > 0) {
+        $mark = sys_get_temp_dir() . '/camp-reg-purge-' . md5(__DIR__);
+        $last = @filemtime($mark);
+        if ($last !== false && time() - $last < $everySecs) {
+            return;
+        }
+        @touch($mark);      // if the folder can't be written to, the check simply runs every time
+    }
+    $old = db()->query(
+        'SELECT id FROM camp_trips WHERE (reg_token IS NOT NULL OR checkin_token IS NOT NULL OR reg_status <> \'off\')
+            AND COALESCE(end_date, start_date) IS NOT NULL AND COALESCE(end_date, start_date) < CURDATE() - INTERVAL ' . REG_KEEP_DAYS . ' DAY'
+    )->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($old as $id) {
+        foreach (['camp_reg_people', 'camp_reg_cars', 'camp_reg_groups'] as $t) {
+            db()->prepare("DELETE FROM $t WHERE trip_id = ?")->execute([(int) $id]);
+        }
+        db()->prepare("UPDATE camp_trips SET reg_status = 'off', reg_token = NULL, checkin_token = NULL WHERE id = ?")->execute([(int) $id]);
+    }
+}
+
 // ---------- Input helpers ----------
 
 function body_json(): array

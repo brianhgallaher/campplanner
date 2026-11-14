@@ -1,8 +1,9 @@
 /* Camp Planner Go — offline support for the phone app (go.html) only. The planner itself is not touched.
    • the app's own files: fresh from the network when there is service, else the saved copy;
    • map tiles: the saved copy first (saved as you look at the map, or with "Save map for offline"). */
-const SHELL = 'go-shell-v1', TILES = 'go-tiles';
-const APP = ['go.html', 'js/go.js', 'js/geo.js', 'css/go.css', 'go.webmanifest', 'img/go-192.png', 'img/go-512.png',
+const SHELL = 'go-shell-v3', TILES = 'go-tiles';
+const APP = ['go.html', 'js/go.js', 'js/geo.js', 'css/go.css', 'go.webmanifest', 'img/go-192.png', 'img/go-512.png', 'img/watermark.webp',
+  'checkin.html', 'js/checkin.js', 'js/regolib.js', 'css/rego.css', 'lib/qrcode.js', 'lib/jsQR.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'];
 
 self.addEventListener('install', e => {
@@ -13,7 +14,7 @@ self.addEventListener('activate', e => {
 });
 
 const isTile = u => /(^|\.)tile\.opentopomap\.org$/.test(u.hostname);
-const isApp = u => (u.origin === location.origin && /\/(go\.html|go\.webmanifest|js\/(go|geo)\.js|css\/go\.css|img\/go-\d+\.png|img\/logo-header\.png)$/.test(u.pathname)) ||
+const isApp = u => (u.origin === location.origin && /\/(go\.html|checkin\.html|go\.webmanifest|js\/(go|geo|checkin|regolib)\.js|css\/(go|rego)\.css|lib\/(qrcode|jsQR)\.js|img\/go-\d+\.png|img\/logo-header\.png)$/.test(u.pathname)) ||
   (u.hostname === 'unpkg.com' && u.pathname.includes('/leaflet@'));
 
 self.addEventListener('fetch', e => {

@@ -63,6 +63,184 @@ const Examples = {
     }
 
     /* ---- gear: starter list for two, plus desert extras ---- */
+    /* real products from the gear catalogue (name, weight, product page, store) in place of the generic starter items where
+       there is a good match; the rest stay generic */
+    const GEAR_PRODUCTS = {
+      "Tent (2 person)": {
+            "name": "Vango Nevis 200 2-Person Lightweight Hiking Tent - Pamir Green",
+            "weightG": 1800,
+            "url": "https://www.wildearth.com.au/buy/vango-nevis-200-2-person-lightweight-hiking-tent-p/VTE-NE200-N",
+            "notes": "Wild Earth"
+      },
+      "Sleeping bag": {
+            "name": "Roman Palm -5°C Hike Sleeping Bag",
+            "weightG": 1100,
+            "url": "https://www.bcf.com.au/p/roman-palm--5c-hike-sleeping-bag/709137.html",
+            "notes": "BCF"
+      },
+      "Sleeping mat": {
+            "name": "Sea to Summit Ether Light XR Insulated Air Sleeping Mat",
+            "weightG": 500,
+            "url": "https://www.snowys.com.au/ether-light-xr-insulated-air-sleeping-mat",
+            "notes": "Snowys"
+      },
+      "Inflatable pillow": {
+            "name": "Sea to Summit Aeros Premium Inflatable Pillow",
+            "weightG": 79,
+            "url": "https://www.wildearth.com.au/buy/sea-to-summit-aeros-premium-pillow-large-magenta/APILPREMLMG",
+            "notes": "Wild Earth"
+      },
+      "Backpack (60 L)": {
+            "name": "Mountain Designs Vallo Hike Pack 60L",
+            "weightG": 1650,
+            "url": "https://www.anacondastores.com/en-au/p/mountain-designs-vallo-hike-pack-60l",
+            "notes": "Anaconda"
+      },
+      "Stove": {
+            "name": "SOTO Amicus Stove w/ Piezo Igniter",
+            "weightG": 82,
+            "url": "https://www.wildearth.com.au/buy/soto-amicus-stove-w-piezo-igniter/STOD-1NVE",
+            "notes": "Wild Earth"
+      },
+      "Cooking pot": {
+            "name": "Sea to Summit Frontier 2L Pot",
+            "weightG": 255,
+            "url": "https://www.wildearth.com.au/buy/sea-to-summit-frontier-2l-ultralight-pot/ACK027011-391702",
+            "notes": "Wild Earth"
+      },
+      "Frying pan": {
+            "name": "Trangia Frypan in Duossal",
+            "weightG": 205,
+            "url": "https://www.wildearth.com.au/buy/trangia-frypan-in-duossal/TRA602521",
+            "notes": "Wild Earth"
+      },
+      "Spork": {
+            "name": "Sea to Summit Frontier Ultralight Spork",
+            "weightG": 15,
+            "url": "https://seatosummit.com.au/products/frontier-ultralight-spork",
+            "notes": "Sea to Summit"
+      },
+      "Mug": {
+            "name": "Sea to Summit Frontier Collapsible Cup",
+            "weightG": 54,
+            "url": "https://www.wildearth.com.au/buy/sea-to-summit-frontier-ultralight-collapsible-cup/ACK038021-040203",
+            "notes": "Wild Earth"
+      },
+      "Bowl": {
+            "name": "Sea to Summit Frontier UItralight Collapsible Bowl - Medium",
+            "weightG": 62,
+            "url": "https://www.snowys.com.au/frontier-uitralight-collapsible-bowl-medium",
+            "notes": "Snowys"
+      },
+      "Knife": {
+            "name": "Victorinox Spartan Swiss Army Knife",
+            "weightG": 59,
+            "url": "https://www.bcf.com.au/p/victorinox-spartan-swiss-army-knife/625337.html",
+            "notes": "BCF"
+      },
+      "Water filter": {
+            "name": "Sawyer Squeeze Water Filter Kit with 2 x 1L Water Pouches",
+            "weightG": 85,
+            "url": "https://www.wildearth.com.au/buy/sawyer-squeeze-water-filter-kit-with-2-x-1l-water/SP129",
+            "notes": "Wild Earth"
+      },
+      "Rain jacket": {
+            "name": "Patagonia Men's Torrentshell 3L Rain Jacket",
+            "weightG": 352,
+            "url": "https://www.bcf.com.au/p/patagonia-mens-torrentshell-3l-rain-jacket/M72539501.html",
+            "notes": "BCF"
+      },
+      "Fleece / warm layer": {
+            "name": "Helly Hansen Daybreaker Mens 1/2 Zip Fleece Pullover",
+            "weightG": 300,
+            "url": "https://www.wildearth.com.au/buy/helly-hansen-daybreaker-mens-1-2-zip-fleece-pullov/50844_992-L",
+            "notes": "Wild Earth"
+      },
+      "Spare socks": {
+            "name": "Midweight Merino Socks",
+            "weightG": 70,
+            "url": "https://altongoods.com/products/midweight-merino-socks",
+            "notes": "Alton Goods"
+      },
+      "Hat": {
+            "name": "XTM Performance Gellibrand II Wide Brim Hat",
+            "weightG": 80,
+            "url": "https://www.snowys.com.au/gellibrand-ii-wide-brim-hat",
+            "notes": "Snowys"
+      },
+      "Hiking boots": {
+            "name": "Mountain Designs Men's Trailblaze Waterproof Mid Hiking Boots",
+            "weightG": 1230,
+            "url": "https://www.anacondastores.com/en-au/p/mountain-designs-mens-trailblaze-waterproof-mid-hiking-boots",
+            "notes": "Anaconda"
+      },
+      "Head torch": {
+            "name": "Black Diamond Storm 450 Lumen Headlamp",
+            "weightG": 92,
+            "url": "https://www.wildearth.com.au/buy/black-diamond-storm-450-lumen-headlamp-octane/BD6206718001ALL1",
+            "notes": "Wild Earth"
+      },
+      "PLB (personal locator beacon)": {
+            "name": "GME Accusat MT610G GPS PLB",
+            "weightG": 160,
+            "url": "https://www.snowys.com.au/accusat-mt610g-gps-plb",
+            "notes": "Snowys"
+      },
+      "First aid kit (incl. snake bandages)": {
+            "name": "Equip Pro 1 First Aid Kit",
+            "weightG": 355,
+            "url": "https://www.wildearth.com.au/buy/equip-pro-1-first-aid-kit/AP100",
+            "notes": "Equip Health Systems · Wild Earth · add snake bandages if the kit has none"
+      },
+      "Whistle": {
+            "name": "Lifesystems Mountain Safety Whistle - Grey",
+            "weightG": 11,
+            "url": "https://www.wildearth.com.au/buy/lifesystems-mountain-safety-whistle-grey/LS2240",
+            "notes": "Wild Earth"
+      },
+      "Toilet trowel & paper": {
+            "name": "Sea to Summit Pocket Trowel",
+            "weightG": 68,
+            "url": "https://www.snowys.com.au/pocket-trowel-one-size-burnt-olive",
+            "notes": "Snowys · plus toilet paper"
+      },
+      "Power bank": {
+            "name": "Cygnett Boost Gen4S 10K Power Bank",
+            "weightG": 200,
+            "url": "https://www.anacondastores.com/en-au/p/cygnett-boost-gen4s-10k-power-bank",
+            "notes": "Anaconda"
+      },
+      "Trekking poles": {
+            "name": "Black Diamond Trail Cork Trekking Poles",
+            "weightG": 494,
+            "url": "https://www.snowys.com.au/trail-cork-trekking-poles",
+            "notes": "Snowys"
+      },
+      "Water bladder (3 L)": {
+            "name": "HydraPak Contour 3L Hydration Reservoir",
+            "weightG": 155,
+            "url": "https://www.snowys.com.au/contour-3l-hydration-reservoir",
+            "notes": "Snowys"
+      },
+      "Fly net": {
+            "name": "Sea to Summit Nano Head Net",
+            "weightG": 23,
+            "url": "https://seatosummit.com.au/products/nano-head-net",
+            "notes": "Sea to Summit"
+      },
+      "Gaiters": {
+            "name": "Sea to Summit Grasshopper Gaiters",
+            "weightG": 185,
+            "url": "https://www.snowys.com.au/grasshopper-gaiters",
+            "notes": "Snowys"
+      },
+      "Satellite messenger": {
+            "name": "Garmin inReach Messenger Compact Satellite Communicator With GPS",
+            "weightG": 114,
+            "url": "https://www.anacondastores.com/en-au/p/garmin-inreach-messenger-compact-satellite-communicator-with-gps",
+            "notes": "Anaconda"
+      }
+    };
     const extras = [
       { name: 'Water bladder (3 L)', category: 'Water', weightG: 160, type: 'base', per: 'person' },
       { name: 'Spare water bottle (1.5 L)', category: 'Water', weightG: 45, type: 'base', per: 'person' },
@@ -73,8 +251,9 @@ const Examples = {
       { name: 'Spare gas canister (230 g)', category: 'Kitchen', weightG: 360, type: 'consumable', per: 'group', source: 'buy', cost: 9.5 }
     ];
     [...GEAR_STARTER, ...extras].forEach(g => (g.per === 'person' ? ['p1', 'p2'] : ['group']).forEach(c => s.gear.push({
-      id: id('g-' + s.gear.length), name: g.name, category: g.category, weightG: g.weightG, qty: 1, type: g.type, carrier: c,
-      packed: false, notes: '', source: g.source || 'own', cost: g.cost || 0, costBasis: g.costBasis || 'trip', paidBy: ''
+      id: id('g-' + s.gear.length), name: (GEAR_PRODUCTS[g.name] || g).name, category: g.category, weightG: (GEAR_PRODUCTS[g.name] || g).weightG, qty: 1, type: g.type, carrier: c,
+      packed: false, notes: (GEAR_PRODUCTS[g.name] || {}).notes || '', source: g.source || 'own', cost: g.cost || 0, costBasis: g.costBasis || 'trip', paidBy: '',
+      ...(GEAR_PRODUCTS[g.name] ? { url: GEAR_PRODUCTS[g.name].url } : {})
     })));
     const spare = s.gear.find(g => g.name.startsWith('Spare gas'));
     trail.drops[1].gearIds = [spare.id]; // the second canister waits at Ellery Creek

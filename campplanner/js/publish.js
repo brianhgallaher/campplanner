@@ -14,6 +14,38 @@ const Publish = (() => {
     secret: ['🔒 Secret', 'Not listed. People need the link and the lock code.']
   };
   const DECISION = { submit: '📤 submitted it for review', approve: '✅ approved', changes: '✏️ asked for changes', withdraw: '↩ withdrew it from review', unpublish: '⏸ unpublished it', published: '🎉 Published' };
+  /* The activity log (camp.php?action=activity): who did what to the trip and its registrations. Group names and counts only. */
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many || one + 's'}`, grp = d => d.group ? ` <b>${esc(d.group)}</b>` : '';
+  const STAGE = { off: 'turned registration off', interest: 'opened expressions of interest', open: 'opened registration', closed: 'closed registration' };
+  const ACTIVITY = {
+    create: () => '🆕 created the trip', update: () => '✏️ edited the plan', delete: () => '🗑 deleted the trip',
+    reg_off: () => '🚫 ' + STAGE.off, reg_interest: d => '📣 ' + STAGE.interest + (d.closes ? ` (closes ${esc(d.closes)})` : ''),
+    reg_open: d => '📝 ' + STAGE.open + (d.closes ? ` (closes ${esc(d.closes)})` : ''), reg_closed: () => '🔒 ' + STAGE.closed,
+    reg_brief_on: () => '📢 sent the briefing', reg_brief_off: () => '↩ withdrew the briefing', reg_brief_edit: () => '📢 changed the briefing',
+    reg_go: () => '✅ recorded <b>GO</b>', reg_nogo: () => '⛔ recorded <b>NO-GO</b>', reg_decision_clear: () => '↩ cleared the go / no-go decision',
+    reg_capacity: d => `👥 changed the places${d.max ? ` (maximum ${d.max})` : ' (no maximum)'}${d.promote ? `, let ${n(d.promote, 'person', 'people')} off the waiting list` : ''}${d.demote ? `, moved ${n(d.demote, 'person', 'people')} onto it` : ''}`,
+    checkin_link_new: () => '📱 made a check-in link', checkin_link_off: () => '📱 removed the check-in link',
+    reg_person_add: d => '➕ added a person' + (d.group ? ' to' + grp(d) : ''), reg_person_remove: d => '➖ removed a person' + (d.group ? ' from' + grp(d) : ''),
+    reg_person_edit: d => '✏️ changed a person\'s details' + (d.group ? ' in' + grp(d) : ''), reg_person_move: d => '↔ moved a person' + (d.group ? ' to' + grp(d) : ' out of their group'),
+    reg_admit: () => '🎟 gave someone a place off the waiting list',
+    reg_group_add: d => '➕ added the group' + grp(d), reg_group_remove: d => '🗑 removed the group' + grp(d), reg_group_edit: d => '✏️ changed the group' + grp(d),
+    reg_group_link: d => '🔗 made a new group leader\'s link for' + grp(d), reg_group_plan: d => '✏️ changed the plan of' + grp(d),
+    reg_register: d => d.newGroup ? '🙋 registered and started the group' + grp(d) : '🙋 registered' + (d.group ? ' in' + grp(d) : ' (no group yet)'),
+    reg_cancel: d => '🚪 cancelled their registration' + (d.group ? ' in' + grp(d) : ''),
+    grp_cars: d => `🚗 saved the cars: ${n(d.cars || 0, 'car')}${d.was != null && d.was !== d.cars ? ` (was ${d.was})` : ''}, ${n(d.seats || 0, 'seat')}${d.details ? `, vehicle details on ${d.details}` : ''}`,
+    grp_plan: () => '🗒 saved the group\'s plan', grp_person_add: () => '➕ added a person', grp_person_remove: () => '➖ removed a person', grp_person_edit: () => '✏️ changed a person\'s details',
+    checkin: () => '✅ recorded arrivals', checkin_undo: () => '↩ undid an arrival'
+  };
+  const WHO = { participant: 'A participant', 'check-in': 'Check-in' };
+  const who = h => WHO[h.username] || (/^group: /.test(h.username) ? 'Group leader, ' + esc(h.username.slice(7)) : esc(h.name));
+  const actLine = h => `<li><small class="muted">${when(h.at)}</small> <b>${who(h)}</b> ${(ACTIVITY[h.action] || (() => esc(h.action)))(h.detail || {})}</li>`;
+  async function loadActivity(box) {
+    const ul = box.querySelector('ul');
+    try {
+      const r = await Server.call('camp.php?action=activity&id=' + encodeURIComponent(Store.tripId));
+      ul.innerHTML = r.activity.length ? r.activity.map(actLine).join('') + (r.activity.length >= 200 ? '<li class="muted">Older entries aren\'t shown.</li>' : '') : '<li class="muted">Nothing recorded yet.</li>';
+    } catch (e) { ul.innerHTML = `<li class="muted">${esc(e.message)}</li>`; }
+  }
   let people = null;
 
   const when = t => new Date(t).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -72,6 +104,8 @@ const Publish = (() => {
 
       ${Store.history.length ? `<details class="pub-history"><summary>Review history (${Store.history.length})</summary>
         <ul>${Store.history.slice().reverse().map(h => `<li><small class="muted">${when(h.at)}</small> ${h.decision === 'published' ? '<b>🎉 Published</b>' : `<b>${esc(h.name)}</b> ${DECISION[h.decision] || esc(h.decision)}`}${h.comment ? `: <i>“${esc(h.comment)}”</i>` : ''}</li>`).join('')}</ul></details>` : ''}
+      ${a.canEdit || Store.isSuper ? `<details class="pub-history" id="pubActivity"><summary>Activity log — who changed what</summary>
+        <p class="muted small">Changes to the plan and to registrations by the trip's leaders, group leaders and participants. Names of participants aren't recorded.</p><ul><li class="muted">Loading…</li></ul></details>` : ''}
     </div>`;
   }
 
@@ -109,6 +143,7 @@ const Publish = (() => {
   }
 
   function bind(root) {
+    root.addEventListener('toggle', e => { if (e.target.id === 'pubActivity' && e.target.open) loadActivity(e.target); }, true);   /* toggle doesn't bubble */
     root.addEventListener('change', e => {
       if (e.target.name === 'pubVis') root.querySelector('.pub-lock').hidden = e.target.value !== 'secret';
     });

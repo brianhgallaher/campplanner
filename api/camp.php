@@ -233,6 +233,28 @@ function history(int $id): array
     }, $stmt->fetchAll());
 }
 
+// The trip's activity log: what its leaders, group leaders and participants did (program_audit rows for the trip; see
+// reg_log() in rego.php). Holds group names and counts only, never personal details. Newest first.
+function activity(int $id, int $limit = 200): array
+{
+    $stmt = db()->prepare(
+        "SELECT a.username, COALESCE(u.name, a.username) AS name, a.action, a.detail, UNIX_TIMESTAMP(a.at) AS ts
+           FROM program_audit a LEFT JOIN program_users u ON u.username = a.username
+          WHERE a.entity IN ('trip', 'camp_trip') AND a.entity_id = ? ORDER BY a.id DESC LIMIT " . (int) $limit
+    );
+    $stmt->execute([$id]);
+    return array_map(function ($h) {
+        $d = json_decode((string) $h['detail'], true);
+        foreach (['promote', 'demote'] as $k) {      // older entries listed ids: show a count
+            if (is_array($d) && is_array($d[$k] ?? null)) {
+                $d[$k] = count($d[$k]);
+            }
+        }
+        return ['username' => $h['username'], 'name' => $h['name'] ?: $h['username'], 'action' => $h['action'],
+                'detail' => is_array($d) ? $d : new stdClass(), 'at' => ms($h['ts'])];
+    }, $stmt->fetchAll());
+}
+
 function iso_or_null($v): ?string
 {
     $v = is_string($v) ? trim($v) : '';
@@ -348,6 +370,11 @@ function trip_reply(int $id, ?array $u): void
 switch ($action) {
     case 'list':
         $u = camp_user();
+        try {
+            reg_purge(3600);        // registrations go 30 days after a trip, even if nobody opens a registration page (at most hourly here)
+        } catch (Throwable $e) {
+            // never stops the list
+        }
         $rows = db()->query('SELECT ' . TRIP_COLUMNS . ' ' . TRIP_FROM . ' ORDER BY t.start_date, t.id')->fetchAll();
         fill_pins($rows);
         $apr = approvals_by_trip();
@@ -552,6 +579,14 @@ switch ($action) {
         db()->prepare('UPDATE camp_trips SET share_token = ? WHERE id = ?')->execute([new_token(), $id]);
         audit($user, 'new link', 'trip', $id);
         trip_reply($id, $user);
+
+    case 'activity':
+        $u = camp_user();
+        $r = ref_trip($_GET['id'] ?? '');
+        if (!$u || !(can_edit($u, $r) || is_super($u))) {
+            fail('Only this trip\'s leaders and superusers can see its activity log.', 403);
+        }
+        json_out(['activity' => activity((int) $r['id'])]);
 
     case 'people':
         $u = camp_user();

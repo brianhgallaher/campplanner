@@ -7,7 +7,8 @@
   <meta name="description" content="Grafton Scout Group camp and hike plans: maps, route cards, meals, gear, risks and printable trip reports.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛺</text></svg>">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="css/styles.css?v=20261114j">
+  <link rel="stylesheet" href="css/styles.css?v=20261115v">
+  <link rel="stylesheet" href="css/rego.css?v=20261115v">
   <style id="pageStyle"></style>
 </head>
 <body>
@@ -27,6 +28,7 @@
     <button data-tab="trip" class="active">🧭 Trip</button>
     <button data-tab="map">🗺️ Map</button>
     <button data-tab="traverse">🥾 Traverse</button>
+    <button data-tab="people">👥 People</button>
     <button data-tab="travel">🚗 Travel</button>
     <button data-tab="meals">🍳 Meals</button>
     <button data-tab="gear">🎒 Gear</button>
@@ -35,8 +37,11 @@
     <button data-tab="weather">🌦️ Weather &amp; Tides</button>
     <button data-tab="budget">💰 Budget</button>
     <button data-tab="report">📄 Report</button>
+    <button data-tab="dash">🛰 Dashboard</button>
   </nav>
   <div id="accessBar" class="access-bar no-print" hidden></div>
+  <div id="stageBar" class="stage-bar no-print" hidden></div>
+  <div id="viewBar" class="view-bar no-print" hidden></div>
 
   <main>
     <section id="tab-trips" class="tab"></section>
@@ -142,6 +147,7 @@
     </section>
 
     <section id="tab-traverse" class="tab"></section>
+    <section id="tab-people" class="tab"></section>
     <section id="tab-travel" class="tab"></section>
     <section id="tab-budget" class="tab"></section>
     <section id="tab-meals" class="tab"></section>
@@ -150,6 +156,7 @@
     <section id="tab-risk" class="tab"></section>
     <section id="tab-weather" class="tab"></section>
     <section id="tab-report" class="tab"></section>
+    <section id="tab-dash" class="tab"></section>
   </main>
 
   <dialog id="dialog"></dialog>
@@ -179,13 +186,13 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/data.js?v=20261114j"></script>
-  <script src="js/store.js?v=20261114j"></script>
+  <script src="js/store.js?v=20261115i"></script>
   <script src="js/account.js?v=20261114j"></script>
-  <script src="js/help.js?v=20261114j"></script>
+  <script src="js/help.js?v=20261115v"></script>
   <script src="js/larapinta.js?v=20261114j"></script>
-  <script src="js/examples.js?v=20261114j"></script>
+  <script src="js/examples.js?v=20261115n"></script>
   <script src="js/trips.js?v=20261114j"></script>
-  <script src="js/geo.js?v=20261114j"></script>
+  <script src="js/geo.js?v=20261115a"></script>
   <script src="js/routing.js?v=20261114j"></script>
   <script src="js/parks.js?v=20261114j"></script>
   <script src="js/publish.js?v=20261114j"></script>
@@ -195,17 +202,21 @@
   <script src="js/drops.js?v=20261114j"></script>
   <script src="js/traverse.js?v=20261114j"></script>
   <script src="js/dayplan.js?v=20261114j"></script>
-  <script src="js/meals.js?v=20261114j"></script>
+  <script src="js/meals.js?v=20261115f"></script>
   <script src="js/gear.js?v=20261114j"></script>
-  <script src="js/catalog.js?v=20261114j"></script>
-  <script src="js/recipebook.js?v=20261114j"></script>
+  <script src="js/catalog.js?v=20261114n"></script>
+  <script src="js/recipebook.js?v=20261115f"></script>
   <script src="js/weight.js?v=20261114j"></script>
   <script src="js/risk.js?v=20261114j"></script>
   <script src="js/weather.js?v=20261114j"></script>
-  <script src="js/travel.js?v=20261114j"></script>
+  <script src="js/travel.js?v=20261115j"></script>
   <script src="js/budget.js?v=20261114j"></script>
-  <script src="js/report.js?v=20261114j"></script>
-  <script src="js/live.js?v=20261114j"></script>
-  <script src="js/app.js?v=20261114j"></script>
+  <script src="js/report.js?v=20261115h"></script>
+  <script src="js/live.js?v=20261115a"></script>
+  <script src="lib/qrcode.js"></script>
+  <script src="js/regolib.js?v=20261115v"></script>
+  <script src="js/rego.js?v=20261115v"></script>
+  <script src="js/dash.js?v=20261115d"></script>
+  <script src="js/app.js?v=20261115e"></script>
 </body>
 </html>

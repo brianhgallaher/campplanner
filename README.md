@@ -12,6 +12,8 @@ It runs as plain HTML/JavaScript pages with a small PHP + MySQL API for sign-in,
 - **Report** – a printable plan, with one page per car.
 - **Publishing** – trips go draft → review → published (the author plus one superuser). Visibility can be public, private (link only) or secret (link plus lock code). Trip IDs are random.
 - **Phone app** (`campplanner/go.html`) – an installable web app for people on the trip. It holds the plan offline, shares location when there's service, sends a simple status message, shows the weather forecast, and has a drag-to-call 000 control. Phones join with a code, so they don't need an account.
+- **Registration and groups** (`campplanner/register.html`) – people register by link and join a group; group leaders enter cars and vehicle details, meals, gear, pack weights and accommodation, and print check-in lists, bag tags and an emergency sheet. No medical details are stored, and registrations are deleted 30 days after the trip.
+- **Check-in and dashboard** (`campplanner/checkin.html`) – QR check-in that works offline, and a dashboard for the day with the map, weather, next event and an activity log.
 - **Live map** – leaders see phones and SPOT / Garmin inReach satellite trackers on the map, with status, speed and direction of travel. Positions are deleted after a year.
 
 ## Layout
@@ -19,7 +21,7 @@ It runs as plain HTML/JavaScript pages with a small PHP + MySQL API for sign-in,
 ```
 campplanner/     the pages, scripts, styles, images and data files
   data/          gear-catalog.json, recipe-library.json, stops.json (built by tools/)
-api/             PHP API: auth.php, camp.php, camp_users.php, track.php, lib/bootstrap.php
+api/             PHP API: auth.php, camp.php, camp_users.php, rego.php, track.php, lib/bootstrap.php
   schema.sql     the database tables
 tools/           Python scripts that rebuild the data files
 ```

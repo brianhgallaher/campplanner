@@ -77,3 +77,10 @@ input:not([type=checkbox]) { display: block; width: 100%; font: inherit; font-si
 .go-wx td.ic { font-size: 22px; text-align: center; line-height: 1.1; }
 .go-wx td.ic small { font-size: 11px; }
 .go-wx tr.trip td { background: #fff9db; }
+
+/* Small watermark badge at the right of the top bar. */
+.go-head::after { content: ""; flex: none; width: 52px; height: 38px; align-self: center; pointer-events: none; opacity: .8; filter: invert(1);
+  background: url(../img/watermark.webp) center / contain no-repeat; }
+/* the ALERT status: home base's dashboard turns red and shows where you are */
+.go-status button[data-st=alert] { border-color: #c92a2a; color: #c92a2a; }
+.go-status button[data-st=alert].on { background: #c92a2a; color: #fff; }
