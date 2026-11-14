@@ -537,7 +537,7 @@ const Rego = (() => {
   const person = pid => D.people.find(p => p.id === pid);
   function addCars() {
     const tr = Store.state.travel, have = new Set(tr.cars.map(c => c.regoCar)), people = Store.state.people;
-    let added = 0, moved = 0, detailed = 0;
+    let added = 0, moved = 0, detailed = 0, loaded = 0;
     /* the group's vehicle details (their Cars screen) go onto the travel plan's car: fuel, economy, tank, payload, towing
        and the trailer's loaded weight. Returns true when something changed. */
     const spec = (t, c) => {
@@ -550,26 +550,29 @@ const Rego = (() => {
       return was !== JSON.stringify([t.fuel, t.economy, t.tank, t.payload, t.towMax, t.gcm, t.trailerKg]);
     };
     const home = c => (c.start ? { name: c.start.name, lat: c.start.lat, lon: c.start.lon } : null);
+    /* the car's passengers as totals (combined body and pack weight, head counts) so the load check still works where the
+       registrations aren't loaded — the report, a published plan. Names and individual weights stay with the registrations. */
+    const load = (t, c) => { const o = Travel.regoLoad(D, c.id), was = JSON.stringify(t.regoLoad || null); if (o) t.regoLoad = o; else delete t.regoLoad; return was !== JSON.stringify(t.regoLoad || null); };
     D.cars.forEach(c => {
       const g = D.groups.find(x => x.id === c.group), name = `${g ? g.name + ' – ' : ''}${c.label}${c.driver ? ` (${c.driver})` : ''}`;
       if (have.has(c.id)) {          // already in the plan: bring its start location, seats and name up to date
         const t = tr.cars.find(x => x.regoCar === c.id), h = home(c);
         if (h && (!t.home || t.home.lat !== h.lat || t.home.lon !== h.lon)) { t.home = h; moved++; }
         t.seats = c.seats; t.name = name;
-        if (spec(t, c)) detailed++;
+        const sp = spec(t, c), ld = load(t, c); if (sp) detailed++; if (ld) loaded++;
         return;
       }
       const t = { id: uid(), regoCar: c.id, name, driver: people[0] ? people[0].id : '', seats: c.seats,
         fuel: 'ulp91', economy: FUEL_TYPES.ulp91.economy, extraPct: 10, tank: 55, mass: 1700, home: home(c), role: tr.cars.length % 2 ? 'finish' : 'start' };
-      spec(t, c);
+      spec(t, c); load(t, c);
       tr.cars.push(t);
       added++;
     });
     const gone = tr.cars.filter(x => x.regoCar && !D.cars.some(c => c.id === x.regoCar));       // a group removed a car since
     Store.save();
     const missing = D.cars.filter(c => !c.start).length;
-    toastMsg(`${added ? `${added} car${added > 1 ? 's' : ''} added to the travel plan. ` : ''}${moved ? `${moved} start location${moved > 1 ? 's' : ''} updated. ` : ''}${detailed ? `Vehicle details updated on ${detailed} car${detailed > 1 ? 's' : ''}. ` : ''}${!added && !moved && !detailed ? 'The travel plan already matches the registered cars. ' : ''}${missing ? `${missing} car${missing > 1 ? 's have' : ' has'} no start location yet, so ${missing > 1 ? 'they leave' : 'it leaves'} from the trip's home. ` : ''}${gone.length ? `${gone.length} car${gone.length > 1 ? 's' : ''} in the travel plan ${gone.length > 1 ? 'are' : 'is'} no longer registered — remove ${gone.length > 1 ? 'them' : 'it'} on the Travel tab.` : ''}`);
-    if (added || moved || detailed) App.show('travel');
+    toastMsg(`${added ? `${added} car${added > 1 ? 's' : ''} added to the travel plan. ` : ''}${moved ? `${moved} start location${moved > 1 ? 's' : ''} updated. ` : ''}${detailed ? `Vehicle details updated on ${detailed} car${detailed > 1 ? 's' : ''}. ` : ''}${loaded ? `Passenger and pack weights updated on ${loaded} car${loaded > 1 ? 's' : ''}. ` : ''}${!added && !moved && !detailed && !loaded ? 'The travel plan already matches the registered cars. ' : ''}${missing ? `${missing} car${missing > 1 ? 's have' : ' has'} no start location yet, so ${missing > 1 ? 'they leave' : 'it leaves'} from the trip's home. ` : ''}${gone.length ? `${gone.length} car${gone.length > 1 ? 's' : ''} in the travel plan ${gone.length > 1 ? 'are' : 'is'} no longer registered — remove ${gone.length > 1 ? 'them' : 'it'} on the Travel tab.` : ''}`);
+    if (added || moved || detailed || loaded) App.show('travel');
   }
 
   function bind() {

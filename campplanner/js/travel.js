@@ -115,23 +115,30 @@ const Travel = (() => {
      10% plus 1% per 45 kg. Estimates only — check the car's handbook and compliance plate. */
   const PAYLOAD = 500, TOW = 1500, CAN_L = 25, CAN_KG = 22, ADULT_KG = 85, YOUTH_KG = 55, PACK_KG = 15;
   const loads = new Map();        // car id -> load facts for the plan being worked out
+  /* A registered car's passengers as totals only — how many adults and youth, their combined weight and their packs'
+     combined weight, and how many of those are real figures. No names: this is what is kept with the travel plan. */
+  function regoLoad(R, regoCar) {
+    if (!R || !regoCar) return null;
+    const ps = R.people.filter(p => p.car === regoCar && !p.wait);
+    if (!ps.length) return null;
+    const o = { adults: ps.filter(p => p.kind === 'adult').length, youth: 0, people: 0, packs: 0, bodyN: 0, packN: 0 };
+    o.youth = ps.length - o.adults;
+    ps.forEach(p => {
+      const g = R.groups.find(x => x.id === p.group), plan = (g && g.plan) || {}, w = (plan.weights || {})[p.id] || {};
+      if (+w.body > 0) { o.people += +w.body; o.bodyN++; } else o.people += p.kind === 'adult' ? ADULT_KG : YOUTH_KG;
+      let pk = +w.pack > 0 ? +w.pack : null;         // weighed; otherwise from the gear lists (as the Pack Weight screens show it)
+      if (pk == null && typeof RegoLib !== 'undefined' && RegoLib.packState) { try { const st = RegoLib.packState(R.trip, plan, p); if (st && st.pack > 0) pk = st.pack; } catch (e) { pk = null; } }
+      if (pk != null) { o.packs += pk; o.packN++; } else o.packs += PACK_KG;
+    });
+    o.people = Math.round(o.people); o.packs = Math.round(o.packs * 10) / 10;
+    return o;
+  }
   function loadOf(car, nPeople, nCars) {
     const R = typeof Rego !== 'undefined' && Rego.peek ? Rego.peek() : null;
     let adults = 0, youth = 0, packs = 0, known = false, people = null, bodyN = 0, packN = 0;
-    if (R && car.regoCar) {
-      const ps = R.people.filter(p => p.car === car.regoCar && !p.wait);
-      if (ps.length) {
-        known = true; people = 0;
-        adults = ps.filter(p => p.kind === 'adult').length; youth = ps.length - adults;
-        ps.forEach(p => {
-          const g = R.groups.find(x => x.id === p.group), plan = (g && g.plan) || {}, w = (plan.weights || {})[p.id] || {};
-          if (+w.body > 0) { people += +w.body; bodyN++; } else people += p.kind === 'adult' ? ADULT_KG : YOUTH_KG;
-          let pk = +w.pack > 0 ? +w.pack : null;         // weighed; otherwise from the gear lists (as the Pack Weight screens show it)
-          if (pk == null && typeof RegoLib !== 'undefined' && RegoLib.packState) { try { const s = RegoLib.packState(R.trip, plan, p); if (s && s.pack > 0) pk = s.pack; } catch (e) { pk = null; } }
-          if (pk != null) { packs += pk; packN++; } else packs += PACK_KG;
-        });
-      }
-    }
+    /* live from the registrations when they are loaded; otherwise the totals saved with the car by "Send cars to the travel plan" */
+    const S = regoLoad(R, car.regoCar) || (car.regoCar && car.regoLoad && (car.regoLoad.adults + car.regoLoad.youth) > 0 ? car.regoLoad : null);
+    if (S) { known = true; adults = num(S.adults); youth = num(S.youth); people = num(S.people); packs = num(S.packs); bodyN = num(S.bodyN); packN = num(S.packN); }
     if (!known) { adults = Math.min(num(car.seats, 5), Math.max(1, Math.ceil(nPeople / Math.max(1, nCars)))); packs = adults * PACK_KG; }
     if (people == null) people = adults * ADULT_KG + youth * YOUTH_KG;
     people = Math.round(people);
@@ -1351,5 +1358,5 @@ const Travel = (() => {
     } catch (e) { return []; }
   }
 
-  return { stayPins, events, loadFacts, carFacts, render, plan, costs, ensure, timetable, schedule, stopsCard, loadStops, planStops, carPlan, needsStops, stopsReady: () => !!stopsData, timeList, shuffleCard, drivenLegs, legDirections, routesCard, MODES, OPTIMISE };
+  return { stayPins, events, regoLoad, loadFacts, carFacts, render, plan, costs, ensure, timetable, schedule, stopsCard, loadStops, planStops, carPlan, needsStops, stopsReady: () => !!stopsData, timeList, shuffleCard, drivenLegs, legDirections, routesCard, MODES, OPTIMISE };
 })();
